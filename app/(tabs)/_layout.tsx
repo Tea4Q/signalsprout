@@ -1,35 +1,254 @@
-import { Tabs } from 'expo-router';
-import React from 'react';
+import { Tabs, useRouter } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
+import { Alert, Pressable, Text, View } from "react-native";
 
-import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { HapticTab } from "@/components/haptic-tab";
+import { AppModal } from "@/components/ui/AppModal";
+import { IconSymbol } from "@/components/ui/icon-symbol";
+import { spacing, typography } from "@/constants/theme";
+import {
+  WorkspaceProvider,
+  useWorkspace,
+  type WorkspaceRole,
+} from "@/context/workspace-context";
+import { useTheme } from "@/hooks/use-theme";
+import { getMyRole } from "@/services/workspace/memberService";
+import { getMyWorkspaces } from "@/services/workspace/workspaceService";
+import type { Database } from "@/types/database";
 
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
+type WorkspaceRow = Database["public"]["Tables"]["workspaces"]["Row"];
+
+// ─── Workspace switcher button shown in header ──────────────────────────────
+
+function WorkspaceSwitcher() {
+  const { workspace, allWorkspaces, loading, setWorkspace } = useWorkspace();
+  const { colors } = useTheme();
+  const [modalOpen, setModalOpen] = useState(false);
+
+  if (loading || !workspace) return null;
+
+  // Only show the dropdown affordance when the user belongs to multiple workspaces
+  const hasMultiple = allWorkspaces.length > 1;
 
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        headerShown: false,
-        tabBarButton: HapticTab,
-      }}>
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+    <>
+      <Pressable
+        onPress={() => hasMultiple && setModalOpen(true)}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel="Switch workspace"
+        style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+      >
+        <Text
+          numberOfLines={1}
+          style={{
+            ...typography.h3,
+            color: colors.textPrimary,
+            maxWidth: 180,
+          }}
+        >
+          {workspace.name}
+        </Text>
+        {hasMultiple && (
+          <Text style={{ color: colors.textMuted, fontSize: 12 }}>▾</Text>
+        )}
+      </Pressable>
+
+      <AppModal
+        visible={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title="Switch workspace"
+      >
+        <View style={{ gap: spacing.sm }}>
+          {allWorkspaces.map((ws) => (
+            <Pressable
+              key={ws.id}
+              onPress={() => {
+                setWorkspace(ws);
+                setModalOpen(false);
+              }}
+              style={({ pressed }) => ({
+                padding: spacing.lg,
+                borderRadius: 12,
+                backgroundColor:
+                  ws.id === workspace.id
+                    ? colors.primarySoft
+                    : pressed
+                      ? colors.surfaceAlt
+                      : colors.surface,
+              })}
+              accessibilityRole="button"
+              accessibilityLabel={`Switch to ${ws.name}`}
+            >
+              <Text
+                style={{
+                  ...typography.body,
+                  color:
+                    ws.id === workspace.id
+                      ? colors.primary
+                      : colors.textPrimary,
+                  fontWeight: ws.id === workspace.id ? "600" : "400",
+                }}
+              >
+                {ws.name}
+              </Text>
+              <Text
+                style={{ ...typography.micro, color: colors.textMuted }}
+              >
+                {ws.slug}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </AppModal>
+    </>
+  );
+}
+
+// ─── Layout ──────────────────────────────────────────────────────────────────
+
+export default function TabLayout() {
+  const { colors } = useTheme();
+  const router = useRouter();
+  const [workspace, setWorkspaceState] = useState<WorkspaceRow | null>(null);
+  const [allWorkspaces, setAllWorkspaces] = useState<WorkspaceRow[]>([]);
+  const [role, setRole] = useState<WorkspaceRole | null>(null);
+  const [loadingWorkspace, setLoadingWorkspace] = useState(true);
+
+  const loadWorkspaces = useCallback(async () => {
+    try {
+      const workspaces = await getMyWorkspaces();
+      if (workspaces.length === 0) {
+        router.replace("/workspace/create" as never);
+        return;
+      }
+      const active = workspaces[0];
+      setAllWorkspaces(workspaces);
+      setWorkspaceState(active);
+      const myRole = await getMyRole(active.id);
+      setRole(myRole as WorkspaceRole | null);
+    } catch (e) {
+      // Auth errors are expected (root layout handles redirect).
+      // Other errors (e.g. Supabase query failures) are logged.
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[TabLayout] loadWorkspaces error:", e);
+      }
+    } finally {
+      setLoadingWorkspace(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadWorkspaces();
+  }, [loadWorkspaces]);
+
+  const handleSwitch = useCallback(async (ws: WorkspaceRow) => {
+    setWorkspaceState(ws);
+    try {
+      const myRole = await getMyRole(ws.id);
+      setRole(myRole as WorkspaceRole | null);
+    } catch {
+      setRole(null);
+    }
+  }, []);
+
+  return (
+    <WorkspaceProvider
+      workspace={workspace}
+      allWorkspaces={allWorkspaces}
+      role={role}
+      loading={loadingWorkspace}
+      onSwitch={handleSwitch}
+    >
+      <Tabs
+        screenOptions={{
+          tabBarActiveTintColor: colors.primary,
+          tabBarInactiveTintColor: colors.textSecondary,
+          tabBarStyle: {
+            backgroundColor: colors.surface,
+            borderTopColor: colors.border,
+            borderTopWidth: 1,
+          },
+          tabBarLabelStyle: {
+            ...typography.micro,
+          },
+          headerShown: true,
+          headerTitle: () => <WorkspaceSwitcher />,
+          headerStyle: { backgroundColor: colors.surface },
+          headerShadowVisible: false,
+          tabBarButton: HapticTab,
         }}
-      />
-      <Tabs.Screen
-        name="explore"
-        options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
-        }}
-      />
-    </Tabs>
+      >
+        <Tabs.Screen
+          name="dashboard"
+          options={{
+            title: "Dashboard",
+            tabBarIcon: ({ color }) => (
+              <IconSymbol size={24} name="house.fill" color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="calendar"
+          options={{
+            title: "Calendar",
+            tabBarIcon: ({ color }) => (
+              <IconSymbol size={24} name="calendar" color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="content"
+          options={{
+            title: "Content",
+            tabBarIcon: ({ color }) => (
+              <IconSymbol size={24} name="sparkles" color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="analytics"
+          options={{
+            title: "Analytics",
+            tabBarIcon: ({ color }) => (
+              <IconSymbol size={24} name="chart.bar.fill" color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="costs"
+          options={{
+            title: "Costs",
+            tabBarIcon: ({ color }) => (
+              <IconSymbol
+                size={24}
+                name="dollarsign.circle.fill"
+                color={color}
+              />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="social-accounts"
+          options={{
+            title: "Accounts",
+            tabBarIcon: ({ color }) => (
+              <IconSymbol size={24} name="person.2.fill" color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="settings"
+          options={{
+            title: "Settings",
+            tabBarIcon: ({ color }) => (
+              <IconSymbol size={24} name="gear" color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen name="index" options={{ href: null }} />
+        <Tabs.Screen name="explore" options={{ href: null }} />
+      </Tabs>
+    </WorkspaceProvider>
   );
 }

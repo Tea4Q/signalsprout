@@ -5,6 +5,7 @@ import {
   SafeAreaView,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   View,
 } from "react-native";
@@ -18,8 +19,9 @@ import { HashtagList } from "@/components/content/HashtagList";
 import { CreativePreview } from "@/components/content/CreativePreview";
 import { generateContent, GeneratedContent } from "@/services/content/contentGenerationService";
 import { generateImage, GeneratedImage } from "@/services/content/imageGenerationService";
-import { createPost } from "@/services/scheduling/postService";
+import { createPost, linkPostAsset } from "@/services/scheduling/postService";
 import { AppButton } from "@/components/ui/AppButton";
+import { AppInput } from "@/components/ui/AppInput";
 
 const TOTAL_STEPS = 4;
 
@@ -48,6 +50,8 @@ export default function CreatePostModal() {
   const [generatingImage, setGeneratingImage] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isScheduled, setIsScheduled] = useState(false);
+  const [scheduledFor, setScheduledFor] = useState("");
 
   const s = styles(colors);
 
@@ -130,13 +134,32 @@ export default function CreatePostModal() {
     setStep(4);
   }, []);
 
-  // ── Step 4: save draft ────────────────────────────────────────────────────
-  const handleSaveDraft = useCallback(async () => {
+  // ── Step 4: save (draft or scheduled) ────────────────────────────────────
+  const handleSave = useCallback(async (schedule: boolean) => {
     if (!workspaceId) return;
+
+    let scheduledAt: string | null = null;
+    if (schedule) {
+      if (!scheduledFor.trim()) {
+        setError("Please enter a scheduled date and time.");
+        return;
+      }
+      const parsed = new Date(scheduledFor.trim());
+      if (isNaN(parsed.getTime())) {
+        setError("Invalid date — use format YYYY-MM-DD HH:MM.");
+        return;
+      }
+      if (parsed <= new Date()) {
+        setError("Scheduled time must be in the future.");
+        return;
+      }
+      scheduledAt = parsed.toISOString();
+    }
+
     setError(null);
     setSaving(true);
     try {
-      await createPost({
+      const post = await createPost({
         brand_id: form.brand_id,
         workspace_id: workspaceId,
         platform: form.platform,
@@ -144,15 +167,19 @@ export default function CreatePostModal() {
         caption,
         hashtags,
         title: form.platform === "pinterest" ? (content?.pin_title ?? null) : null,
-        status: "draft",
+        status: schedule ? "scheduled" : "draft",
+        scheduled_for: scheduledAt,
       });
+      if (image) {
+        await linkPostAsset(post.id, image.asset_id);
+      }
       router.back();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Save failed.");
     } finally {
       setSaving(false);
     }
-  }, [form, workspaceId, content, caption, hashtags, router]);
+  }, [form, workspaceId, content, caption, hashtags, image, scheduledFor, router]);
 
   const handleBack = () => {
     if (step > 1) setStep((s) => s - 1);
@@ -178,7 +205,7 @@ export default function CreatePostModal() {
             ? "Review Content"
             : step === 3
             ? "Add Creative"
-            : "Save Draft"}
+            : "Review & Save"}
         </Text>
         <Text style={{ ...typography.caption, color: colors.textMuted }}>
           {step}/{TOTAL_STEPS}
@@ -333,18 +360,9 @@ export default function CreatePostModal() {
           </View>
         )}
 
-        {/* ── Step 4: Save Draft ── */}
+        {/* ── Step 4: Review & Save ── */}
         {step === 4 && (
           <View style={{ gap: spacing.xl }}>
-            <View style={{ gap: spacing.md }}>
-              <Text style={{ ...typography.h3, color: colors.textPrimary }}>
-                Ready to save?
-              </Text>
-              <Text style={{ ...typography.body, color: colors.textSecondary }}>
-                This post will be saved as a draft. You can review and schedule it from the Content screen.
-              </Text>
-            </View>
-
             {/* Summary */}
             <View style={s.summaryCard}>
               <SummaryRow label="Platform" value={form.platform} />
@@ -353,12 +371,51 @@ export default function CreatePostModal() {
               {image && <SummaryRow label="Image" value="Attached" />}
             </View>
 
-            <AppButton
-              label={saving ? "Saving…" : "Save as Draft"}
-              onPress={handleSaveDraft}
-              disabled={saving}
-              loading={saving}
-            />
+            {/* Schedule toggle */}
+            <View style={s.scheduleRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ ...typography.body, color: colors.textPrimary }}>Schedule for later</Text>
+                <Text style={{ ...typography.caption, color: colors.textMuted }}>
+                  Pick a future date and time to publish
+                </Text>
+              </View>
+              <Switch
+                value={isScheduled}
+                onValueChange={setIsScheduled}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor={colors.background}
+                accessibilityLabel="Schedule post"
+              />
+            </View>
+
+            {isScheduled && (
+              <AppInput
+                label="Publish at (YYYY-MM-DD HH:MM)"
+                value={scheduledFor}
+                onChangeText={setScheduledFor}
+                placeholder="2026-05-01 09:00"
+                keyboardType="numbers-and-punctuation"
+                autoCapitalize="none"
+              />
+            )}
+
+            <View style={{ gap: spacing.md }}>
+              {isScheduled ? (
+                <AppButton
+                  label={saving ? "Scheduling…" : "Schedule Post"}
+                  onPress={() => handleSave(true)}
+                  disabled={saving}
+                  loading={saving}
+                />
+              ) : (
+                <AppButton
+                  label={saving ? "Saving…" : "Save as Draft"}
+                  onPress={() => handleSave(false)}
+                  disabled={saving}
+                  loading={saving}
+                />
+              )}
+            </View>
           </View>
         )}
       </ScrollView>
@@ -427,6 +484,16 @@ function styles(colors: any) {
       borderWidth: 1,
       borderColor: colors.border,
       gap: spacing.xs,
+    },
+    scheduleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: colors.surface,
+      borderRadius: radius.lg,
+      padding: spacing.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      gap: spacing.md,
     },
   });
 }

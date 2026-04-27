@@ -3,13 +3,19 @@ import { useTheme } from "@/hooks/use-theme";
 import { supabase } from "@/lib/supabase";
 import { ThemeProvider } from "@/context/theme-context";
 import { ToastProvider } from "@/context/toast-context";
+import { WorkspaceProvider, type WorkspaceRole } from "@/context/workspace-context";
 import { isOnboardingComplete } from "@/app/onboarding";
+import { getMyRole } from "@/services/workspace/memberService";
+import { getMyWorkspaces } from "@/services/workspace/workspaceService";
+import type { Database } from "@/types/database";
 import type { Session } from "@supabase/supabase-js";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import React, { Component, useEffect, useState } from "react";
+import React, { Component, useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Text, View, Pressable } from "react-native";
 import "react-native-reanimated";
+
+type WorkspaceRow = Database["public"]["Tables"]["workspaces"]["Row"];
 
 export const unstable_settings = {
   anchor: "(tabs)",
@@ -84,6 +90,43 @@ function RootLayout() {
   const router = useRouter();
   const segments = useSegments();
 
+  const [workspace, setWorkspaceState] = useState<WorkspaceRow | null>(null);
+  const [allWorkspaces, setAllWorkspaces] = useState<WorkspaceRow[]>([]);
+  const [role, setRole] = useState<WorkspaceRole | null>(null);
+  const [loadingWorkspace, setLoadingWorkspace] = useState(false);
+
+  const loadWorkspaces = useCallback(async () => {
+    setLoadingWorkspace(true);
+    try {
+      const workspaces = await getMyWorkspaces();
+      if (workspaces.length === 0) {
+        router.replace("/workspace/create" as never);
+        return;
+      }
+      const active = workspaces[0];
+      setAllWorkspaces(workspaces);
+      setWorkspaceState(active);
+      const myRole = await getMyRole(active.id);
+      setRole(myRole as WorkspaceRole | null);
+    } catch (e) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[RootLayout] loadWorkspaces error:", e);
+      }
+    } finally {
+      setLoadingWorkspace(false);
+    }
+  }, [router]);
+
+  const handleSwitchWorkspace = useCallback(async (ws: WorkspaceRow) => {
+    setWorkspaceState(ws);
+    try {
+      const myRole = await getMyRole(ws.id);
+      setRole(myRole as WorkspaceRole | null);
+    } catch {
+      setRole(null);
+    }
+  }, []);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
@@ -100,12 +143,24 @@ function RootLayout() {
   }, []);
 
   useEffect(() => {
+    if (session) {
+      loadWorkspaces();
+    } else {
+      setWorkspaceState(null);
+      setAllWorkspaces([]);
+      setRole(null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
+
+  useEffect(() => {
     if (loading) return;
 
     const inAuthGroup = segments[0] === "(auth)";
     const inOnboarding = (segments[0] as string) === "onboarding";
+    const inOAuthCallback = segments[0] === "oauth";
 
-    if (!session && !inAuthGroup) {
+    if (!session && !inAuthGroup && !inOAuthCallback) {
       router.replace("/(auth)/sign-in");
     } else if (session && inAuthGroup) {
       // Check if onboarding has been completed before going to dashboard
@@ -119,7 +174,14 @@ function RootLayout() {
     }
   }, [session, loading, segments]);
 
-  if (loading) {
+  // Let the oauth callback render immediately — it handles its own loading state
+  // and must not be blocked by the auth spinner or redirected to sign-in.
+  const isOAuthCallback =
+    typeof window !== "undefined"
+      ? (globalThis as any).location?.pathname?.startsWith("/oauth/")
+      : false;
+
+  if (loading && !isOAuthCallback) {
     return (
       <View
         style={{
@@ -135,7 +197,13 @@ function RootLayout() {
   }
 
   return (
-    <>
+    <WorkspaceProvider
+      workspace={workspace}
+      allWorkspaces={allWorkspaces}
+      role={role}
+      loading={loadingWorkspace}
+      onSwitch={handleSwitchWorkspace}
+    >
       <Stack>
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -182,7 +250,7 @@ function RootLayout() {
       </Stack>
       <AppToastContainer />
       <StatusBar style="auto" backgroundColor={colors.background} />
-    </>
+    </WorkspaceProvider>
   );
 }
 

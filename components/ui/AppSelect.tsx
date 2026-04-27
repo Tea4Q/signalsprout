@@ -7,6 +7,7 @@ import {
     TouchableWithoutFeedback,
     View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { radius, spacing, typography } from "../../constants/theme";
 import { useTheme } from "../../hooks/use-theme";
 
@@ -34,6 +35,7 @@ export function AppSelect({
   error,
 }: AppSelectProps) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
 
   const selected = options.find((o) => o.value === value);
@@ -114,7 +116,7 @@ export function AppSelect({
                   borderTopLeftRadius: radius.xl,
                   borderTopRightRadius: radius.xl,
                   paddingTop: spacing.lg,
-                  paddingBottom: spacing["3xl"],
+                  paddingBottom: insets.bottom + spacing.lg,
                   maxHeight: "60%",
                 }}
               >
@@ -134,6 +136,7 @@ export function AppSelect({
                 <FlatList
                   data={options}
                   keyExtractor={(item) => item.value}
+                  style={{ flexShrink: 1 }}
                   renderItem={({ item }) => {
                     const isSelected = item.value === value;
                     return (

@@ -1,22 +1,15 @@
-import { Tabs, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
-import { Alert, Pressable, Text, View } from "react-native";
+import { Tabs } from "expo-router";
+import { useState } from "react";
+import { Pressable, Text, View } from "react-native";
 
 import { HapticTab } from "@/components/haptic-tab";
 import { AppModal } from "@/components/ui/AppModal";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { spacing, typography } from "@/constants/theme";
 import {
-  WorkspaceProvider,
   useWorkspace,
-  type WorkspaceRole,
 } from "@/context/workspace-context";
 import { useTheme } from "@/hooks/use-theme";
-import { getMyRole } from "@/services/workspace/memberService";
-import { getMyWorkspaces } from "@/services/workspace/workspaceService";
-import type { Database } from "@/types/database";
-
-type WorkspaceRow = Database["public"]["Tables"]["workspaces"]["Row"];
 
 // ─── Workspace switcher button shown in header ──────────────────────────────
 
@@ -109,58 +102,9 @@ function WorkspaceSwitcher() {
 
 export default function TabLayout() {
   const { colors } = useTheme();
-  const router = useRouter();
-  const [workspace, setWorkspaceState] = useState<WorkspaceRow | null>(null);
-  const [allWorkspaces, setAllWorkspaces] = useState<WorkspaceRow[]>([]);
-  const [role, setRole] = useState<WorkspaceRole | null>(null);
-  const [loadingWorkspace, setLoadingWorkspace] = useState(true);
-
-  const loadWorkspaces = useCallback(async () => {
-    try {
-      const workspaces = await getMyWorkspaces();
-      if (workspaces.length === 0) {
-        router.replace("/workspace/create" as never);
-        return;
-      }
-      const active = workspaces[0];
-      setAllWorkspaces(workspaces);
-      setWorkspaceState(active);
-      const myRole = await getMyRole(active.id);
-      setRole(myRole as WorkspaceRole | null);
-    } catch (e) {
-      // Auth errors are expected (root layout handles redirect).
-      // Other errors (e.g. Supabase query failures) are logged.
-      if (process.env.NODE_ENV !== "production") {
-        console.warn("[TabLayout] loadWorkspaces error:", e);
-      }
-    } finally {
-      setLoadingWorkspace(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadWorkspaces();
-  }, [loadWorkspaces]);
-
-  const handleSwitch = useCallback(async (ws: WorkspaceRow) => {
-    setWorkspaceState(ws);
-    try {
-      const myRole = await getMyRole(ws.id);
-      setRole(myRole as WorkspaceRole | null);
-    } catch {
-      setRole(null);
-    }
-  }, []);
 
   return (
-    <WorkspaceProvider
-      workspace={workspace}
-      allWorkspaces={allWorkspaces}
-      role={role}
-      loading={loadingWorkspace}
-      onSwitch={handleSwitch}
-    >
-      <Tabs
+    <Tabs
         screenOptions={{
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: colors.textSecondary,
@@ -249,6 +193,5 @@ export default function TabLayout() {
         <Tabs.Screen name="index" options={{ href: null }} />
         <Tabs.Screen name="explore" options={{ href: null }} />
       </Tabs>
-    </WorkspaceProvider>
   );
 }

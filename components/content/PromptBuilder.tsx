@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { View } from "react-native";
-import { spacing } from "../../constants/theme";
+import { Pressable, Text, View } from "react-native";
+import { useRouter } from "expo-router";
+import { spacing, typography } from "../../constants/theme";
+import { useTheme } from "../../hooks/use-theme";
 import { useWorkspace } from "../../context/workspace-context";
 import { getBrands } from "../../services/workspace/brandService";
 import { getContentTypes, getToneOptions } from "../../services/content/promptTemplateService";
@@ -28,16 +30,25 @@ interface PromptBuilderProps {
 }
 
 export function PromptBuilder({ values, onChange }: PromptBuilderProps) {
+  const { colors } = useTheme();
+  const router = useRouter();
   const { workspaceId } = useWorkspace();
   const [brandOptions, setBrandOptions] = useState<SelectOption[]>([]);
+  const [brandsLoading, setBrandsLoading] = useState(false);
+  const [brandsError, setBrandsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!workspaceId) return;
+    setBrandsLoading(true);
+    setBrandsError(null);
     getBrands(workspaceId)
       .then((brands) =>
         setBrandOptions(brands.map((b) => ({ label: b.name, value: b.id })))
       )
-      .catch(() => {});
+      .catch((e: unknown) => {
+        setBrandsError(e instanceof Error ? e.message : "Failed to load brands.");
+      })
+      .finally(() => setBrandsLoading(false));
   }, [workspaceId]);
 
   const set = <K extends keyof PromptBuilderValues>(
@@ -62,8 +73,25 @@ export function PromptBuilder({ values, onChange }: PromptBuilderProps) {
         value={values.brand_id}
         options={brandOptions}
         onChange={(v) => set("brand_id", v)}
-        placeholder="Select a brand"
+        placeholder={brandsLoading ? "Loading brands…" : "Select a brand"}
+        error={brandsError ?? undefined}
       />
+      {!brandsLoading && !brandsError && brandOptions.length === 0 && (
+        <View style={{ marginTop: -spacing.sm, paddingHorizontal: spacing.xs }}>
+          <Text style={{ ...typography.caption, color: colors.textMuted }}>
+            No brands found.{" "}
+            <Pressable
+              onPress={() => router.push(`/workspace/${workspaceId}/brands`)}
+              accessibilityRole="link"
+              style={{ display: "flex" }}
+            >
+              <Text style={{ ...typography.caption, color: colors.primary, textDecorationLine: "underline" }}>
+                Create one in Workspace Settings.
+              </Text>
+            </Pressable>
+          </Text>
+        </View>
+      )}
       <AppSelect
         label="Platform"
         value={values.platform}

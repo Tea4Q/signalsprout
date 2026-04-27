@@ -69,6 +69,8 @@ export default function SocialAccountsScreen() {
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [instagramSetupVisible, setInstagramSetupVisible] = useState(false);
   const connectingRef = useRef(false);
+  // Cached oauth result read from sessionStorage on mount (before workspaceId is ready)
+  const pendingOauthToast = useRef<{ type: string; platform?: string; message?: string } | null>(null);
 
   const load = useCallback(
     async (silent = false) => {
@@ -93,27 +95,29 @@ export default function SocialAccountsScreen() {
     load();
   }, [load]);
 
-  // Read any OAuth result signalled by /oauth/callback via sessionStorage
+  // Step 1: Read oauth_toast immediately on mount (before workspaceId may be ready)
+  // and cache it in a ref. Remove from sessionStorage so it's only consumed once.
   useEffect(() => {
     const ss = (globalThis as any).sessionStorage as Storage | undefined;
     if (!ss) return;
     const raw = ss.getItem("oauth_toast");
     if (!raw) return;
     ss.removeItem("oauth_toast");
-    try {
-      const { type, platform, message } = JSON.parse(raw) as {
-        type: "success" | "error";
-        platform?: string;
-        message?: string;
-      };
-      if (type === "success" && platform) {
-        showToast(`${platform} connected`, "success");
-        load(true);
-      } else if (type === "error") {
-        showToast(message ?? "Connection failed", "error");
-      }
-    } catch {}
-  }, [showToast, load]);
+    try { pendingOauthToast.current = JSON.parse(raw); } catch {}
+  }, []);
+
+  // Step 2: Act on the cached result once workspaceId (and therefore load) is available.
+  useEffect(() => {
+    const pending = pendingOauthToast.current;
+    if (!pending || !workspaceId) return;
+    pendingOauthToast.current = null;
+    if (pending.type === "success" && pending.platform) {
+      showToast(`${pending.platform} connected`, "success");
+      load(true);
+    } else if (pending.type === "error") {
+      showToast(pending.message ?? "Connection failed", "error");
+    }
+  }, [workspaceId, showToast, load]);
 
   // ── Connect ───────────────────────────────────────────────────────────────
 

@@ -420,14 +420,19 @@ Deno.serve(async (req: Request) => {
       .select("id, account_name, account_identifier, avatar_url, token_expires_at, status")
       .single();
 
-    if (upsertError) throw upsertError;
+    if (upsertError) {
+      throw new Error(`DB upsert failed: ${upsertError.message} (code: ${upsertError.code})`);
+    }
 
     return new Response(JSON.stringify({ success: true, account }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "OAuth exchange failed";
+    const message =
+      err instanceof Error
+        ? err.message
+        : (err as any)?.message ?? JSON.stringify(err) ?? "OAuth exchange failed";
     console.error("[oauth-exchange]", message);
     return new Response(JSON.stringify({ error: message }), {
       status: 500,

@@ -1,5 +1,6 @@
 import { spacing, typography } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
+import { env } from "@/lib/env";
 import { supabase } from "@/lib/supabase";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
@@ -57,18 +58,24 @@ export default function OAuthCallbackPage() {
 
         const redirectUri = Linking.createURL("oauth/callback");
         const { data: sessionData } = await supabase.auth.getSession();
-        const { data, error: fnError } = await supabase.functions.invoke(
-          "oauth-exchange",
+
+        // Use raw fetch so we can read the actual error body when the function
+        // returns a non-2xx — supabase.functions.invoke swallows the body.
+        const fnRes = await fetch(
+          `${env.supabaseUrl}/functions/v1/oauth-exchange`,
           {
-            body: { platform: platformId, code, workspaceId, redirectUri },
+            method: "POST",
             headers: {
-              Authorization: `Bearer ${sessionData.session?.access_token}`,
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${sessionData.session?.access_token}`,
+              "apikey": env.supabaseAnonKey,
             },
+            body: JSON.stringify({ platform: platformId, code, workspaceId, redirectUri }),
           },
         );
-
-        if (fnError || !data?.success) {
-          throw new Error(data?.error ?? fnError?.message ?? "Token exchange failed");
+        const fnJson = await fnRes.json().catch(() => ({})) as Record<string, unknown>;
+        if (!fnRes.ok || !fnJson?.["success"]) {
+          throw new Error((fnJson?.["error"] as string | undefined) ?? `Exchange failed (HTTP ${fnRes.status})`);
         }
 
         // Signal success to the social-accounts page via sessionStorage

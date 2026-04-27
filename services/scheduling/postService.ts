@@ -43,6 +43,13 @@ export async function getPost(id: string): Promise<PostRow> {
   return data;
 }
 
+export async function linkPostAsset(postId: string, assetId: string): Promise<void> {
+  const { error } = await supabase
+    .from("post_assets")
+    .insert({ post_id: postId, asset_id: assetId, sort_order: 0 });
+  if (error) throw error;
+}
+
 export async function getPosts(
   workspaceId: string,
   filters?: PostFilters,

@@ -1,7 +1,7 @@
 -- Migration: add_campaigns_table
 -- Applied: 2026-04-04
 
-create table public.campaigns (
+create table if not exists public.campaigns (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references public.workspaces(id) on delete cascade,
   brand_id uuid not null references public.brands(id) on delete cascade,
@@ -15,18 +15,22 @@ create table public.campaigns (
 
 alter table public.campaigns enable row level security;
 
+drop policy if exists "workspace_members_select_campaigns" on public.campaigns;
 create policy "workspace_members_select_campaigns"
   on public.campaigns for select
   using (public.is_workspace_member(workspace_id));
 
+drop policy if exists "workspace_members_insert_campaigns" on public.campaigns;
 create policy "workspace_members_insert_campaigns"
   on public.campaigns for insert
   with check (public.is_workspace_member(workspace_id));
 
+drop policy if exists "workspace_members_update_campaigns" on public.campaigns;
 create policy "workspace_members_update_campaigns"
   on public.campaigns for update
   using (public.is_workspace_member(workspace_id));
 
+drop policy if exists "workspace_members_delete_campaigns" on public.campaigns;
 create policy "workspace_members_delete_campaigns"
   on public.campaigns for delete
   using (public.is_workspace_member(workspace_id));

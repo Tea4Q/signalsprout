@@ -34,7 +34,7 @@ create policy "workspace_members_select_own"
 -- SECURITY DEFINER means the function runs as its definer (postgres / service
 -- role) and therefore bypasses RLS on workspace_members, breaking the cycle.
 
-create or replace function public.is_workspace_member(p_workspace_id uuid)
+create or replace function public.is_workspace_member(check_workspace_id uuid)
 returns boolean
 language sql
 security definer
@@ -44,7 +44,7 @@ as $func$
   select exists (
     select 1
     from public.workspace_members
-    where workspace_id = p_workspace_id
+    where workspace_id = check_workspace_id
       and user_id      = auth.uid()
   )
 $func$;

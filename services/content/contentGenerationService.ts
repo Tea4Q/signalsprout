@@ -26,7 +26,12 @@ export async function generateContent(
     "generate-content",
     { body: params },
   );
-  if (error) throw error;
+  if (error) {
+    // Extract the real error message from the function response body
+    const body = await (error as { context?: Response }).context?.json().catch(() => null);
+    const message = body?.error ?? error.message;
+    throw new Error(message);
+  }
   if (!data) throw new Error("No content returned from generation");
   return data;
 }

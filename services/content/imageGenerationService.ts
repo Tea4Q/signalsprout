@@ -19,7 +19,11 @@ export async function generateImage(
     "generate-image",
     { body: { prompt, platform, brand_id: brandId, workspace_id: workspaceId } },
   );
-  if (error) throw error;
+  if (error) {
+    const body = await (error as { context?: Response }).context?.json().catch(() => null);
+    const message = body?.error ?? error.message;
+    throw new Error(message);
+  }
   if (!data) throw new Error("No image returned from generation");
   return data;
 }

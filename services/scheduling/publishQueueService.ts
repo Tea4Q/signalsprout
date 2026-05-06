@@ -42,7 +42,12 @@ export async function getQueue(
 
   const { data, error } = await query;
   if (error) throw error;
-  return (data ?? []) as unknown as QueueItem[];
+  // Supabase returns the joined table as the key "posts" (table name).
+  // Map it to "post" to match the QueueItem shape.
+  return ((data ?? []) as unknown as Array<Record<string, unknown>>).map((row) => ({
+    ...row,
+    post: row["posts"] ?? null,
+  })) as unknown as QueueItem[];
 }
 
 export async function retryFailedPost(postId: string): Promise<void> {

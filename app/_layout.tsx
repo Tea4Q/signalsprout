@@ -220,6 +220,10 @@ function RootLayout() {
           options={{ presentation: "modal", title: "Modal" }}
         />
         <Stack.Screen
+          name="modals/edit-post"
+          options={{ presentation: "modal", headerShown: false }}
+        />
+        <Stack.Screen
           name="modals/create-post"
           options={{ presentation: "modal", headerShown: false }}
         />
@@ -233,6 +237,10 @@ function RootLayout() {
         />
         <Stack.Screen
           name="modals/add-cost"
+          options={{ presentation: "modal", headerShown: false }}
+        />
+        <Stack.Screen
+          name="modals/add-credit"
           options={{ presentation: "modal", headerShown: false }}
         />
         <Stack.Screen

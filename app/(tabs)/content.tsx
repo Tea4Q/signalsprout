@@ -8,7 +8,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { radius, spacing, typography } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { useWorkspace } from "@/context/workspace-context";
@@ -58,6 +58,13 @@ export default function ContentScreen() {
     if (!loadingWorkspace) loadPosts();
   }, [loadingWorkspace, loadPosts]);
 
+  // Refresh whenever this tab comes back into focus (e.g. after closing edit modal)
+  useFocusEffect(
+    useCallback(() => {
+      if (!loadingWorkspace) loadPosts();
+    }, [loadingWorkspace, loadPosts]),
+  );
+
   const openCreatePost = () => router.push("/modals/create-post");
 
   const renderPost = ({ item }: { item: PostRow }) => {
@@ -69,7 +76,12 @@ export default function ContentScreen() {
       : item.hook ?? "No caption";
 
     return (
-      <View style={s.postCard}>
+      <Pressable
+        style={({ pressed }) => [s.postCard, { opacity: pressed ? 0.85 : 1 }]}
+        onPress={() => router.push({ pathname: "/modals/edit-post", params: { postId: item.id } })}
+        accessibilityRole="button"
+        accessibilityLabel={`Edit post: ${preview}`}
+      >
         <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: spacing.sm }}>
           <View style={{ flex: 1 }}>
             <Text style={{ ...typography.caption, color: colors.textMuted, textTransform: "uppercase", marginBottom: spacing.xs }}>
@@ -89,7 +101,7 @@ export default function ContentScreen() {
         <Text style={{ ...typography.micro, color: colors.textMuted, marginTop: spacing.sm }}>
           {new Date(item.created_at).toLocaleDateString()}
         </Text>
-      </View>
+      </Pressable>
     );
   };
 

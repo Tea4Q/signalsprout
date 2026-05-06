@@ -32,4 +32,19 @@ export async function cancelSchedule(postId: string): Promise<void> {
     .eq("post_id", postId)
     .eq("status", "queued");
   if (jobError) throw jobError;
+
+  // Cancel the sleeping Inngest function for this post (non-blocking — ignore errors)
+  supabase.functions
+    .invoke("inngest-send", {
+      body: { name: "post/unscheduled", data: { post_id: postId } },
+    })
+    .catch((err) => console.warn("Inngest cancel event failed (non-fatal):", err));
+}
+
+export async function publishNow(postId: string): Promise<void> {
+  const { data, error } = await supabase.functions.invoke("publish-now", {
+    body: { post_id: postId },
+  });
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
 }

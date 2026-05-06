@@ -64,7 +64,7 @@ Deno.serve(async (req: Request) => {
     // Fetch post via user-scoped client (RLS enforces workspace membership)
     const { data: post, error: postError } = await supabase
       .from("posts")
-      .select("id, workspace_id, status, social_account_id")
+      .select("id, workspace_id, status, social_account_id, platform")
       .eq("id", post_id)
       .single();
 
@@ -126,6 +126,29 @@ Deno.serve(async (req: Request) => {
       actor_user_id: user.id,
       metadata: { scheduled_for, publish_job_id: job.id },
     });
+
+    // Fire Inngest event so the publish-scheduled-post function can sleep
+    // until the scheduled time and then trigger the queue processor.
+    // Non-blocking: a delivery failure does not fail the schedule operation.
+    const inngestEventKey = Deno.env.get("INNGEST_EVENT_KEY");
+    if (inngestEventKey) {
+      try {
+        await fetch(`https://inn.gs/e/${inngestEventKey}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "post/scheduled",
+            data: {
+              post_id,
+              scheduled_for,
+              platform: post.platform,
+            },
+          }),
+        });
+      } catch (inngestErr) {
+        console.error("Inngest event delivery failed (non-fatal):", inngestErr);
+      }
+    }
 
     return new Response(
       JSON.stringify({ success: true, publish_job_id: job.id }),

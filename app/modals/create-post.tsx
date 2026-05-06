@@ -20,6 +20,12 @@ import { CreativePreview } from "@/components/content/CreativePreview";
 import { generateContent, GeneratedContent } from "@/services/content/contentGenerationService";
 import { generateImage, GeneratedImage } from "@/services/content/imageGenerationService";
 import { createPost, linkPostAsset } from "@/services/scheduling/postService";
+import { publishNow } from "@/services/scheduling/schedulerService";
+import {
+  uploadExternalImage,
+  setAsCharacterReference,
+  getCharacterReference,
+} from "@/services/content/assetService";
 import { AppButton } from "@/components/ui/AppButton";
 import { AppInput } from "@/components/ui/AppInput";
 
@@ -45,10 +51,15 @@ export default function CreatePostModal() {
   const [image, setImage] = useState<GeneratedImage | null>(null);
   const [caption, setCaption] = useState("");
   const [hashtags, setHashtags] = useState<string[]>([]);
+  const [destinationUrl, setDestinationUrl] = useState("");
+  const [isCharacterRef, setIsCharacterRef] = useState(false);
+  const [existingCharRef, setExistingCharRef] = useState(false);
 
   const [generating, setGenerating] = useState(false);
   const [generatingImage, setGeneratingImage] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isScheduled, setIsScheduled] = useState(false);
   const [scheduledFor, setScheduledFor] = useState("");
@@ -90,6 +101,15 @@ export default function CreatePostModal() {
     setStep(3);
   }, []);
 
+  // ── Step 3: check for existing character reference ────────────────────────
+  React.useEffect(() => {
+    if (step === 3 && form.brand_id) {
+      getCharacterReference(form.brand_id).then((ref) => {
+        setExistingCharRef(ref !== null);
+      });
+    }
+  }, [step, form.brand_id]);
+
   // ── Step 3: generate image ────────────────────────────────────────────────
   const handleGenerateImage = useCallback(async () => {
     if (!workspaceId || !content) return;
@@ -129,6 +149,22 @@ export default function CreatePostModal() {
     }
   }, [content, form.platform, form.brand_id, workspaceId]);
 
+  // ── Step 3: upload image from device ────────────────────────────────────
+  const handleUploadImage = useCallback(async () => {
+    if (!workspaceId || !form.brand_id) return;
+    setError(null);
+    setUploadingImage(true);
+    try {
+      const result = await uploadExternalImage(workspaceId, form.brand_id);
+      setImage(result);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Upload failed.";
+      if (msg !== "No image selected.") setError(msg);
+    } finally {
+      setUploadingImage(false);
+    }
+  }, [workspaceId, form.brand_id]);
+
   // ── Step 3 → Step 4: review ───────────────────────────────────────────────
   const handleToReview = useCallback(() => {
     setStep(4);
@@ -167,11 +203,15 @@ export default function CreatePostModal() {
         caption,
         hashtags,
         title: form.platform === "pinterest" ? (content?.pin_title ?? null) : null,
+        destination_url: destinationUrl.trim() || null,
         status: schedule ? "scheduled" : "draft",
         scheduled_for: scheduledAt,
       });
       if (image) {
         await linkPostAsset(post.id, image.asset_id);
+        if (isCharacterRef) {
+          await setAsCharacterReference(image.asset_id, form.brand_id);
+        }
       }
       router.back();
     } catch (e: unknown) {
@@ -179,7 +219,40 @@ export default function CreatePostModal() {
     } finally {
       setSaving(false);
     }
-  }, [form, workspaceId, content, caption, hashtags, image, scheduledFor, router]);
+  }, [form, workspaceId, content, caption, hashtags, destinationUrl, image, isCharacterRef, scheduledFor, router]);
+
+  // ── Step 4: publish immediately ───────────────────────────────────────────
+  const handlePublishNow = useCallback(async () => {
+    if (!workspaceId) return;
+    setError(null);
+    setPublishing(true);
+    try {
+      const post = await createPost({
+        brand_id: form.brand_id,
+        workspace_id: workspaceId,
+        platform: form.platform,
+        hook: content?.hook ?? null,
+        caption,
+        hashtags,
+        title: form.platform === "pinterest" ? (content?.pin_title ?? null) : null,
+        destination_url: destinationUrl.trim() || null,
+        status: "approved",
+        scheduled_for: null,
+      });
+      if (image) {
+        await linkPostAsset(post.id, image.asset_id);
+        if (isCharacterRef) {
+          await setAsCharacterReference(image.asset_id, form.brand_id);
+        }
+      }
+      await publishNow(post.id);
+      router.back();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Publish failed.");
+    } finally {
+      setPublishing(false);
+    }
+  }, [form, workspaceId, content, caption, hashtags, destinationUrl, image, isCharacterRef, router]);
 
   const handleBack = () => {
     if (step > 1) setStep((s) => s - 1);
@@ -302,6 +375,21 @@ export default function CreatePostModal() {
               </>
             )}
 
+            {/* Destination URL */}
+            <AppInput
+              label={
+                form.platform === "pinterest"
+                  ? "Destination URL (optional)"
+                  : "Link in Bio URL (optional)"
+              }
+              value={destinationUrl}
+              onChangeText={setDestinationUrl}
+              placeholder="https://"
+              keyboardType="url"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+
             {/* Image prompt preview */}
             <View style={{ gap: spacing.xs }}>
               <Text style={{ ...typography.caption, color: colors.textSecondary }}>
@@ -328,12 +416,21 @@ export default function CreatePostModal() {
             />
 
             {!image ? (
-              <AppButton
-                label={generatingImage ? "Generating Image…" : "Generate Image"}
-                onPress={handleGenerateImage}
-                disabled={generatingImage}
-                loading={generatingImage}
-              />
+              <View style={{ gap: spacing.md }}>
+                <AppButton
+                  label={generatingImage ? "Generating Image…" : "Generate Image"}
+                  onPress={handleGenerateImage}
+                  disabled={generatingImage || uploadingImage}
+                  loading={generatingImage}
+                />
+                <AppButton
+                  label={uploadingImage ? "Uploading…" : "Upload from Device"}
+                  onPress={handleUploadImage}
+                  disabled={uploadingImage || generatingImage}
+                  loading={uploadingImage}
+                  variant="secondary"
+                />
+              </View>
             ) : (
               <View style={{ gap: spacing.md }}>
                 <AppButton
@@ -343,10 +440,46 @@ export default function CreatePostModal() {
                 <AppButton
                   label={generatingImage ? "Regenerating…" : "Regenerate"}
                   onPress={handleRegenerateImage}
-                  disabled={generatingImage}
+                  disabled={generatingImage || uploadingImage}
                   loading={generatingImage}
                   variant="secondary"
                 />
+                <AppButton
+                  label={uploadingImage ? "Uploading…" : "Upload Different Image"}
+                  onPress={handleUploadImage}
+                  disabled={uploadingImage || generatingImage}
+                  loading={uploadingImage}
+                  variant="secondary"
+                />
+              </View>
+            )}
+
+            {image && (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: spacing.sm,
+                  paddingVertical: spacing.xs,
+                }}
+              >
+                <Switch
+                  value={isCharacterRef}
+                  onValueChange={setIsCharacterRef}
+                  trackColor={{ false: colors.border, true: colors.primary }}
+                  thumbColor={colors.background}
+                  accessibilityLabel="Set as brand character"
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ ...typography.body, color: colors.textPrimary }}>
+                    Set as brand character
+                  </Text>
+                  <Text style={{ ...typography.caption, color: colors.textMuted }}>
+                    {existingCharRef
+                      ? "Replaces existing character for this brand"
+                      : "This image will be used in future AI generations"}
+                  </Text>
+                </View>
               </View>
             )}
 
@@ -400,19 +533,27 @@ export default function CreatePostModal() {
             )}
 
             <View style={{ gap: spacing.md }}>
+              <AppButton
+                label={publishing ? "Publishing…" : "Publish Now"}
+                onPress={handlePublishNow}
+                disabled={publishing || saving}
+                loading={publishing}
+              />
               {isScheduled ? (
                 <AppButton
                   label={saving ? "Scheduling…" : "Schedule Post"}
                   onPress={() => handleSave(true)}
-                  disabled={saving}
+                  disabled={saving || publishing}
                   loading={saving}
+                  variant="secondary"
                 />
               ) : (
                 <AppButton
                   label={saving ? "Saving…" : "Save as Draft"}
                   onPress={() => handleSave(false)}
-                  disabled={saving}
+                  disabled={saving || publishing}
                   loading={saving}
+                  variant="secondary"
                 />
               )}
             </View>

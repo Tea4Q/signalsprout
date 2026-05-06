@@ -9,14 +9,19 @@ import {
   getBrandProfile,
   updateBrand,
   upsertBrandProfile,
+  getBrandAssets,
+  uploadBrandAsset,
+  deleteBrandAsset,
 } from "@/services/workspace/brandService";
 import { supabase } from "@/lib/supabase";
 import type { Database } from "@/types/database";
+import { Image } from "expo-image";
 import { useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -31,6 +36,7 @@ type BrandProfileRow = Database["public"]["Tables"]["brand_profiles"]["Row"];
 const TABS = [
   { key: "info", label: "Info" },
   { key: "profile", label: "Profile" },
+  { key: "assets", label: "Assets" },
 ];
 
 // ─── Tag Input Helper ──────────────────────────────────────────────────────────
@@ -321,11 +327,262 @@ function ProfileTab({
   );
 }
 
+// ─── Assets Tab ──────────────────────────────────────────────────────────────
+
+const ASSET_LABELS = ["Logo", "Character / Avatar", "Banner", "Product Shot", "Other"];
+
+type AssetRow = Database["public"]["Tables"]["assets"]["Row"];
+
+function AssetsTab({
+  workspaceId,
+  brandId,
+}: {
+  workspaceId: string;
+  brandId: string;
+}) {
+  const { colors } = useTheme();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [assets, setAssets] = useState<AssetRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [selectedLabel, setSelectedLabel] = useState(ASSET_LABELS[0]);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadAssets = useCallback(async () => {
+    try {
+      const data = await getBrandAssets(workspaceId, brandId);
+      setAssets(data);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to load assets.");
+    } finally {
+      setLoading(false);
+    }
+  }, [workspaceId, brandId]);
+
+  useEffect(() => { loadAssets(); }, [loadAssets]);
+
+  async function handleWebFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError(null);
+    setUploading(true);
+    try {
+      await uploadBrandAsset(workspaceId, brandId, file, selectedLabel);
+      await loadAssets();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setUploading(false);
+      // reset file input
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function handleDelete(asset: AssetRow) {
+    Alert.alert("Delete Asset", `Remove "${asset.alt_text ?? "this asset"}" permanently?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await deleteBrandAsset(asset.id, asset.file_path);
+            setAssets((prev) => prev.filter((a) => a.id !== asset.id));
+          } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : "Delete failed.");
+          }
+        },
+      },
+    ]);
+  }
+
+  function getPublicUrl(filePath: string): string {
+    const { data } = supabase.storage.from("assets").getPublicUrl(filePath);
+    return data.publicUrl;
+  }
+
+  return (
+    <ScrollView contentContainerStyle={{ padding: spacing.xl, gap: spacing.xl }}>
+      {!!error && (
+        <View
+          style={{
+            backgroundColor: colors.accentSoft,
+            borderRadius: radius.md,
+            padding: spacing.md,
+          }}
+        >
+          <Text style={{ ...typography.caption, color: colors.danger }}>{error}</Text>
+        </View>
+      )}
+
+      {/* Upload section */}
+      <View
+        style={{
+          backgroundColor: colors.surface,
+          borderRadius: radius.lg,
+          borderWidth: 1,
+          borderColor: colors.border,
+          padding: spacing.xl,
+          gap: spacing.lg,
+        }}
+      >
+        <Text style={{ ...typography.h3, color: colors.textPrimary }}>Upload Asset</Text>
+
+        {/* Label picker */}
+        <View style={{ gap: spacing.xs }}>
+          <Text style={{ ...typography.caption, color: colors.textSecondary }}>Asset Type</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
+            {ASSET_LABELS.map((label) => (
+              <Pressable
+                key={label}
+                onPress={() => setSelectedLabel(label)}
+                style={{
+                  paddingHorizontal: spacing.md,
+                  paddingVertical: spacing.xs,
+                  borderRadius: radius.xl,
+                  backgroundColor:
+                    selectedLabel === label ? colors.primary : colors.surface,
+                  borderWidth: 1,
+                  borderColor:
+                    selectedLabel === label ? colors.primary : colors.border,
+                }}
+                accessibilityRole="button"
+              >
+                <Text
+                  style={{
+                    ...typography.caption,
+                    color:
+                      selectedLabel === label
+                        ? colors.background
+                        : colors.textSecondary,
+                    fontWeight: selectedLabel === label ? "600" : "400",
+                  }}
+                >
+                  {label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
+        {Platform.OS === "web" ? (
+          <View style={{ gap: spacing.sm }}>
+            {/* eslint-disable-next-line @typescript-eslint/ban-ts-comment */}
+            {/* @ts-expect-error web-only */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/svg+xml"
+              title="Choose brand asset"
+              aria-label="Choose brand asset file"
+              disabled={uploading}
+              onChange={handleWebFile}
+            />
+            {uploading && (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={{ ...typography.caption, color: colors.textSecondary }}>
+                  Uploading…
+                </Text>
+              </View>
+            )}
+          </View>
+        ) : (
+          <View
+            style={{
+              padding: spacing.lg,
+              borderRadius: radius.md,
+              borderWidth: 1,
+              borderStyle: "dashed",
+              borderColor: colors.border,
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ ...typography.caption, color: colors.textMuted, textAlign: "center" }}>
+              File upload is available on web. Open this page in a browser to upload assets.
+            </Text>
+          </View>
+        )}
+      </View>
+
+      {/* Asset gallery */}
+      {loading ? (
+        <ActivityIndicator color={colors.primary} />
+      ) : assets.length === 0 ? (
+        <View style={{ alignItems: "center", paddingVertical: spacing.xl }}>
+          <Text style={{ ...typography.body, color: colors.textMuted }}>
+            No brand assets uploaded yet.
+          </Text>
+        </View>
+      ) : (
+        <View style={{ gap: spacing.md }}>
+          <Text style={{ ...typography.caption, color: colors.textSecondary, textTransform: "uppercase" }}>
+            Uploaded Assets ({assets.length})
+          </Text>
+          {assets.map((asset) => (
+            <View
+              key={asset.id}
+              style={{
+                backgroundColor: colors.surface,
+                borderRadius: radius.lg,
+                borderWidth: 1,
+                borderColor: colors.border,
+                overflow: "hidden",
+              }}
+            >
+              <Image
+                source={{ uri: getPublicUrl(asset.file_path) }}
+                style={{ width: "100%", height: 180 }}
+                contentFit="contain"
+                transition={200}
+              />
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: spacing.md,
+                  gap: spacing.sm,
+                }}
+              >
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={{ ...typography.body, color: colors.textPrimary, fontWeight: "600" }}>
+                    {asset.alt_text ?? "Untitled"}
+                  </Text>
+                  <Text style={{ ...typography.micro, color: colors.textMuted }}>
+                    {new Date(asset.created_at).toLocaleDateString()}
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={() => handleDelete(asset)}
+                  style={({ pressed }) => ({
+                    paddingHorizontal: spacing.md,
+                    paddingVertical: spacing.xs,
+                    borderRadius: radius.sm,
+                    borderWidth: 1,
+                    borderColor: colors.danger + "40",
+                    backgroundColor: colors.danger + "10",
+                    opacity: pressed ? 0.6 : 1,
+                  })}
+                  accessibilityRole="button"
+                  accessibilityLabel="Delete asset"
+                >
+                  <Text style={{ ...typography.caption, color: colors.danger }}>Delete</Text>
+                </Pressable>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+    </ScrollView>
+  );
+}
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function BrandDetailScreen() {
   const { colors } = useTheme();
-  const { brandId } = useLocalSearchParams<{ workspaceId: string; brandId: string }>();
+  const { workspaceId, brandId } = useLocalSearchParams<{ workspaceId: string; brandId: string }>();
 
   const [activeTab, setActiveTab] = useState("info");
   const [brand, setBrand] = useState<BrandRow | null>(null);
@@ -377,8 +634,10 @@ export default function BrandDetailScreen() {
           brand={brand}
           onSaved={(updated) => setBrand((prev) => prev ? { ...prev, ...updated } : prev)}
         />
-      ) : (
+      ) : activeTab === "profile" ? (
         <ProfileTab brand={brand} profile={profile} />
+      ) : (
+        <AssetsTab workspaceId={workspaceId!} brandId={brand.id} />
       )}
     </SafeAreaView>
   );

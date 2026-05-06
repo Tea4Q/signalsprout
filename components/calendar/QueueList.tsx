@@ -36,12 +36,14 @@ const PLATFORM_LABEL: Record<string, string> = {
 interface QueueListProps {
   items: QueueItem[];
   onRetry?: (postId: string) => void;
+  onPress?: (postId: string) => void;
   emptyLabel?: string;
 }
 
 export function QueueList({
   items,
   onRetry,
+  onPress,
   emptyLabel = "No posts in queue.",
 }: QueueListProps) {
   const { colors } = useTheme();
@@ -79,15 +81,19 @@ export function QueueList({
     const isFailed = status === "failed";
 
     return (
-      <View
-        style={{
+      <Pressable
+        onPress={() => post?.id && onPress?.(post.id)}
+        style={({ pressed }) => ({
           backgroundColor: colors.surface,
           borderRadius: radius.lg,
           padding: spacing.lg,
           borderWidth: 1,
           borderColor: isFailed ? colors.danger : colors.border,
           marginBottom: spacing.md,
-        }}
+          opacity: pressed ? 0.85 : 1,
+        })}
+        accessibilityRole="button"
+        accessibilityLabel={`Edit post: ${preview}`}
       >
         <View
           style={{
@@ -151,7 +157,7 @@ export function QueueList({
             </Text>
           </Pressable>
         )}
-      </View>
+      </Pressable>
     );
   };
 

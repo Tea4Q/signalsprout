@@ -422,6 +422,50 @@ export type Database = {
           },
         ];
       };
+      credit_purchases: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          vendor: string;
+          amount_usd: number;
+          credits: number;
+          purchased_at: string;
+          notes: string | null;
+          created_at: string;
+          created_by: string | null;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          vendor: string;
+          amount_usd: number;
+          credits: number;
+          purchased_at: string;
+          notes?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+        };
+        Update: {
+          id?: string;
+          workspace_id?: string;
+          vendor?: string;
+          amount_usd?: number;
+          credits?: number;
+          purchased_at?: string;
+          notes?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "credit_purchases_workspace_id_fkey";
+            columns: ["workspace_id"];
+            isOneToOne: false;
+            referencedRelation: "workspaces";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       credential_vault: {
         Row: {
           created_at: string;

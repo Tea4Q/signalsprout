@@ -9,7 +9,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { radius, spacing, typography } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { useWorkspace } from "@/context/workspace-context";
@@ -86,6 +86,13 @@ export default function CalendarScreen() {
   useEffect(() => {
     if (!loadingWorkspace) loadAll();
   }, [loadingWorkspace, loadAll]);
+
+  // Refresh when returning to this screen (e.g. after editing/scheduling a post)
+  useFocusEffect(
+    useCallback(() => {
+      if (!loadingWorkspace) loadAll();
+    }, [loadingWorkspace, loadAll]),
+  );
 
   const dots = useMemo<DayDots>(() => {
     const map: DayDots = {};
@@ -220,7 +227,11 @@ export default function CalendarScreen() {
                 >
                   Scheduled this month
                 </Text>
-                <QueueList items={monthQueueItems} onRetry={handleRetry} />
+                <QueueList
+              items={monthQueueItems}
+              onRetry={handleRetry}
+              onPress={(postId) => router.push({ pathname: "/modals/edit-post", params: { postId } })}
+            />
               </View>
             )}
           </View>
@@ -240,6 +251,7 @@ export default function CalendarScreen() {
             <QueueList
               items={queueItems.filter((j) => j.status !== "failed")}
               onRetry={handleRetry}
+              onPress={(postId) => router.push({ pathname: "/modals/edit-post", params: { postId } })}
               emptyLabel="No posts queued yet."
             />
           </View>
@@ -263,7 +275,11 @@ export default function CalendarScreen() {
                 </Text>
               </View>
             ) : (
-              <QueueList items={failedQueueItems} onRetry={handleRetry} />
+              <QueueList
+              items={failedQueueItems}
+              onRetry={handleRetry}
+              onPress={(postId) => router.push({ pathname: "/modals/edit-post", params: { postId } })}
+            />
             )}
           </View>
         )}
@@ -318,7 +334,7 @@ export default function CalendarScreen() {
                 onPress={() => {
                   setSheetVisible(false);
                   router.push({
-                    pathname: "/modals/schedule-post",
+                    pathname: "/modals/edit-post",
                     params: { postId: post.id },
                   });
                 }}

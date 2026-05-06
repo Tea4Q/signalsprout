@@ -43,6 +43,11 @@ export async function getPost(id: string): Promise<PostRow> {
   return data;
 }
 
+export async function deletePost(id: string): Promise<void> {
+  const { error } = await supabase.from("posts").delete().eq("id", id);
+  if (error) throw error;
+}
+
 export async function linkPostAsset(postId: string, assetId: string): Promise<void> {
   const { error } = await supabase
     .from("post_assets")

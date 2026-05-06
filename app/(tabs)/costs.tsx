@@ -21,6 +21,10 @@ import {
   getCostEntries,
   getCostSources,
 } from "@/services/finance/costService";
+import {
+  VendorCreditSummary,
+  getVendorCreditSummaries,
+} from "@/services/finance/creditService";
 import type { Database } from "@/types/database";
 import { router } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -288,6 +292,7 @@ export default function CostsScreen() {
   const [sources, setSources] = useState<CostSource[]>([]);
   const [allEntries, setAllEntries] = useState<CostEntryWithSource[]>([]);
   const [budgetStatus, setBudgetStatus] = useState<BudgetStatus | null>(null);
+  const [creditSummaries, setCreditSummaries] = useState<VendorCreditSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -300,16 +305,18 @@ export default function CostsScreen() {
         const histRange = chartHistoryRange(period);
         const periodRange = periodDateRange(period);
 
-        const [src, hist] = await Promise.all([
+        const [src, hist, credits] = await Promise.all([
           getCostSources(workspaceId),
           getCostEntries(workspaceId, {
             from: histRange.from,
             to: histRange.to,
           }),
+          getVendorCreditSummaries(workspaceId),
         ]);
 
         setSources(src);
         setAllEntries(hist);
+        setCreditSummaries(credits);
 
         const periodEntries = hist.filter(
           (e) =>
@@ -457,6 +464,50 @@ export default function CostsScreen() {
               <ToolSpendTable rows={toolRows} />
             </View>
 
+            {/* Credits / balance */}
+            {creditSummaries.length > 0 && (
+              <View style={s.card}>
+                <Text style={s.sectionTitle}>AI Credits</Text>
+                <View style={{ gap: spacing.md }}>
+                  {creditSummaries.map((cs) => {
+                    const usedPct = cs.totalPurchased > 0
+                      ? Math.min((cs.totalSpentUSD / cs.totalPurchased) * 100, 100)
+                      : 0;
+                    const barColor =
+                      usedPct >= 100
+                        ? colors.danger
+                        : usedPct >= 80
+                          ? colors.warning
+                          : colors.primary;
+                    return (
+                      <View key={cs.vendor} style={{ gap: spacing.xs }}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                          <Text style={{ ...typography.body, color: colors.textPrimary, fontWeight: "600" }}>
+                            {cs.vendor}
+                          </Text>
+                          <Text style={{ ...typography.caption, color: barColor, fontWeight: "600" }}>
+                            {formatUSD(cs.remainingCredits)} left
+                          </Text>
+                        </View>
+                        {/* Progress bar */}
+                        <View style={{ height: 6, borderRadius: 999, backgroundColor: colors.borderSoft, overflow: "hidden" }}>
+                          <View style={{ height: 6, width: `${usedPct}%`, borderRadius: 999, backgroundColor: barColor }} />
+                        </View>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                          <Text style={{ ...typography.micro, color: colors.textSecondary }}>
+                            Spent: {formatUSD(cs.totalSpentUSD)}
+                          </Text>
+                          <Text style={{ ...typography.micro, color: colors.textSecondary }}>
+                            Purchased: {formatUSD(cs.totalPurchased)}
+                          </Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+
             {/* By brand */}
             {brandRows.length > 0 && (
               <View style={s.card}>
@@ -499,15 +550,25 @@ export default function CostsScreen() {
         )}
       </ScrollView>
 
-      {/* FAB */}
-      <Pressable
-        onPress={() => router.push("/modals/add-cost" as never)}
-        style={({ pressed }) => [s.fab, pressed && { opacity: 0.85 }]}
-        accessibilityRole="button"
-        accessibilityLabel="Add cost entry"
-      >
-        <Text style={s.fabText}>+ Add Cost Entry</Text>
-      </Pressable>
+      {/* FABs */}
+      <View style={s.fabRow}>
+        <Pressable
+          onPress={() => router.push("/modals/add-credit" as never)}
+          style={({ pressed }) => [s.fabSecondary, pressed && { opacity: 0.85 }]}
+          accessibilityRole="button"
+          accessibilityLabel="Add credit purchase"
+        >
+          <Text style={s.fabSecondaryText}>+ Credits</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => router.push("/modals/add-cost" as never)}
+          style={({ pressed }) => [s.fab, { flex: 1 }, pressed && { opacity: 0.85 }]}
+          accessibilityRole="button"
+          accessibilityLabel="Add cost entry"
+        >
+          <Text style={s.fabText}>+ Add Cost Entry</Text>
+        </Pressable>
+      </View>
     </SafeAreaView>
   );
 }
@@ -540,11 +601,15 @@ function styles(colors: ThemeColors) {
       ...typography.h3,
       color: colors.textPrimary,
     },
-    fab: {
+    fabRow: {
       position: "absolute",
       bottom: spacing["2xl"],
       right: spacing.xl,
       left: spacing.xl,
+      flexDirection: "row",
+      gap: spacing.sm,
+    },
+    fab: {
       backgroundColor: colors.primary,
       borderRadius: radius.xl,
       paddingVertical: spacing.lg,
@@ -553,6 +618,21 @@ function styles(colors: ThemeColors) {
     fabText: {
       ...typography.body,
       color: colors.background,
+      fontWeight: "600",
+    },
+    fabSecondary: {
+      backgroundColor: colors.surface,
+      borderRadius: radius.xl,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      paddingVertical: spacing.lg,
+      paddingHorizontal: spacing.xl,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    fabSecondaryText: {
+      ...typography.body,
+      color: colors.primary,
       fontWeight: "600",
     },
   });

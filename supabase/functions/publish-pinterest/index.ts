@@ -78,7 +78,7 @@ Deno.serve(async (_req: Request) => {
         .select("encrypted_value")
         .eq("workspace_id", post.workspace_id as string)
         .eq("service", "pinterest")
-        .eq("name", "access_token")[]
+        .eq("name", "access_token")
         .maybeSingle();
 
       if (!vault) throw new Error("Pinterest access token not found in vault");

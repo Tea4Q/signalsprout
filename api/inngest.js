@@ -15,10 +15,10 @@ const publishScheduledPost = inngest.createFunction(
   {
     id: "publish-scheduled-post",
     name: "Publish Scheduled Post",
+    triggers: [{ event: "post/scheduled" }],
     cancelOn: [{ event: "post/unscheduled", match: "data.post_id" }],
     retries: 3,
   },
-  { event: "post/scheduled" },
   async ({ event, step }) => {
     const { post_id, scheduled_for, platform } = event.data;
 

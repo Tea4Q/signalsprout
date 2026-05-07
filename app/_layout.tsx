@@ -128,18 +128,30 @@ function RootLayout() {
   }, []);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setLoading(false);
-    });
-
+    // onAuthStateChange fires INITIAL_SESSION synchronously on setup,
+    // so we use it as the single source of truth instead of getSession().
     const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, newSession) => {
+      (event, newSession) => {
         setSession(newSession);
+        // Mark loading done once we have the initial session state
+        if (event === "INITIAL_SESSION") {
+          setLoading(false);
+        }
+        // Reload workspaces on sign-in and token refresh
+        if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+          loadWorkspaces();
+        }
+        // Clear workspace on sign-out
+        if (event === "SIGNED_OUT") {
+          setWorkspaceState(null);
+          setAllWorkspaces([]);
+          setRole(null);
+        }
       },
     );
 
     return () => listener.subscription.unsubscribe();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -151,7 +163,7 @@ function RootLayout() {
       setRole(null);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session]);
+  }, []);
 
   useEffect(() => {
     if (loading) return;

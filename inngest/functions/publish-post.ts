@@ -12,6 +12,7 @@ export const publishScheduledPost = inngest.createFunction(
   {
     id: "publish-scheduled-post",
     name: "Publish Scheduled Post",
+    triggers: [{ event: "post/scheduled" }],
     cancelOn: [
       {
         event: "post/unscheduled",
@@ -20,8 +21,7 @@ export const publishScheduledPost = inngest.createFunction(
     ],
     retries: 3,
   },
-  { event: "post/scheduled" },
-  async ({ event, step }) => {
+  async ({ event, step }: { event: any; step: any }) => {
     const { post_id, scheduled_for, platform } = event.data;
 
     // Sleep until the exact scheduled time

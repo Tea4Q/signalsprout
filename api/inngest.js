@@ -27,11 +27,21 @@ const publishScheduledPost = inngest.createFunction(
     const result = await step.run("trigger-platform-publisher", async () => {
       const functionName =
         platform === "pinterest" ? "publish-pinterest" : "publish-instagram";
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/${functionName}`, {
+
+      const supabaseUrl = process.env.SUPABASE_URL;
+      const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+      if (!supabaseUrl || !serviceRoleKey) {
+        throw new Error(
+          `Missing Vercel env vars: SUPABASE_URL=${!!supabaseUrl}, SUPABASE_SERVICE_ROLE_KEY=${!!serviceRoleKey}`,
+        );
+      }
+
+      const res = await fetch(`${supabaseUrl}/functions/v1/${functionName}`, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
-          apikey: SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${serviceRoleKey}`,
+          apikey: serviceRoleKey,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({}),

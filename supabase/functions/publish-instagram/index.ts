@@ -3,28 +3,6 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const MAX_ATTEMPTS = 3;
 
-async function decryptCredential(encryptedB64: string, ivB64: string): Promise<string> {
-  const raw = Deno.env.get("CREDENTIAL_MASTER_KEY");
-  if (!raw) throw new Error("CREDENTIAL_MASTER_KEY secret not configured");
-  const encoded = new TextEncoder().encode(raw);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", encoded);
-  const masterKey = await crypto.subtle.importKey(
-    "raw",
-    hashBuffer,
-    { name: "AES-GCM" },
-    false,
-    ["decrypt"],
-  );
-  const iv = Uint8Array.from(atob(ivB64), (c) => c.charCodeAt(0));
-  const ciphertext = Uint8Array.from(atob(encryptedB64), (c) => c.charCodeAt(0));
-  const plainBuffer = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv },
-    masterKey,
-    ciphertext,
-  );
-  return new TextDecoder().decode(plainBuffer);
-}
-
 Deno.serve(async (_req: Request) => {
   const serviceClient = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -82,24 +60,14 @@ Deno.serve(async (_req: Request) => {
 
       const { data: account } = await serviceClient
         .from("social_accounts")
-        .select("external_account_id, account_identifier")
+        .select("external_account_id, account_identifier, access_token")
         .eq("id", socialAccountId)
         .single();
 
       if (!account) throw new Error("Social account not found");
+      if (!account.access_token) throw new Error("Instagram access token missing on social account");
 
-      // Retrieve access token from credential_vault
-      const { data: vault } = await serviceClient
-        .from("credential_vault")
-        .select("encrypted_value, iv")
-        .eq("workspace_id", post.workspace_id as string)
-        .eq("service", "instagram")
-        .eq("name", "access_token")
-        .maybeSingle();
-
-      if (!vault) throw new Error("Instagram atoken not found in vault");
-
-      const accessToken = await decryptCredential(vault.encrypted_value, vault.iv);
+      const accessToken = account.access_token;
       const igUserId = account.external_account_id;
       if (!igUserId)
         throw new Error("Instagram user ID not configured on social account");

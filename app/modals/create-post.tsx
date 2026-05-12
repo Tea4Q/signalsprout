@@ -20,7 +20,7 @@ import { CreativePreview } from "@/components/content/CreativePreview";
 import { generateContent, GeneratedContent } from "@/services/content/contentGenerationService";
 import { generateImage, GeneratedImage } from "@/services/content/imageGenerationService";
 import { createPost, linkPostAsset } from "@/services/scheduling/postService";
-import { publishNow } from "@/services/scheduling/schedulerService";
+import { publishNow, schedulePost } from "@/services/scheduling/schedulerService";
 import {
   uploadExternalImage,
   setAsCharacterReference,
@@ -212,6 +212,9 @@ export default function CreatePostModal() {
         if (isCharacterRef) {
           await setAsCharacterReference(image.asset_id, form.brand_id);
         }
+      }
+      if (scheduledAt) {
+        await schedulePost(post.id, scheduledAt);
       }
       router.back();
     } catch (e: unknown) {

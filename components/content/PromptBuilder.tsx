@@ -12,12 +12,14 @@ import { AppTextarea } from "../ui/AppTextarea";
 
 const PLATFORM_OPTIONS: SelectOption[] = [
   { label: "Instagram", value: "instagram" },
+  { label: "Facebook", value: "facebook" },
+  { label: "TikTok", value: "tiktok" },
   { label: "Pinterest", value: "pinterest" },
 ];
 
 export interface PromptBuilderValues {
   brand_id: string;
-  platform: "instagram" | "pinterest";
+  platform: "instagram" | "pinterest" | "facebook" | "tiktok";
   content_type: string;
   tone: string;
   cta: string;
@@ -96,7 +98,8 @@ export function PromptBuilder({ values, onChange }: PromptBuilderProps) {
         label="Platform"
         value={values.platform}
         options={PLATFORM_OPTIONS}
-        onChange={(v) => set("platform", v as "instagram" | "pinterest")}
+        onChange={(v) => set("platform", v as PromptBuilderValues["platform"])}
+
       />
       <AppSelect
         label="Content Type"

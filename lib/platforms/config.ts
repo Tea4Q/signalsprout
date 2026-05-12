@@ -106,7 +106,7 @@ export const PLATFORMS: Record<PlatformId, PlatformConfig> = {
       `https://www.facebook.com/dialog/oauth?${buildQuery({
         client_id: clientId,
         redirect_uri: redirectUri,
-        scope: "pages_manage_posts,pages_read_engagement",
+        scope: "pages_manage_posts,pages_read_engagement,pages_show_list",
         response_type: "code",
         state,
       })}`,

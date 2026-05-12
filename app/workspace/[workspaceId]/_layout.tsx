@@ -16,7 +16,7 @@ export default function WorkspaceLayout() {
     >
       <Stack.Screen name="brands" options={{ title: "Brands" }} />
       <Stack.Screen name="campaigns" options={{ title: "Campaigns" }} />
-      <Stack.Screen name="assets" options={{ title: "Assets" }} />
+      <Stack.Screen name="assets" options={{ headerShown: false }} />
       <Stack.Screen
         name="social-accounts"
         options={{ title: "Social Accounts" }}

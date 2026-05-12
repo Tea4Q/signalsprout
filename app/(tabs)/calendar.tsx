@@ -23,10 +23,10 @@ import { getPosts, deletePost, approvePost, rejectPost } from "@/services/schedu
 import {
   getQueue,
   retryFailedPost,
-  publishNow,
   reschedulePost,
   QueueItem,
 } from "@/services/scheduling/publishQueueService";
+import { publishNow } from "@/services/scheduling/schedulerService";
 import type { Database } from "@/types/database";
 
 type PostRow = Database["public"]["Tables"]["posts"]["Row"];

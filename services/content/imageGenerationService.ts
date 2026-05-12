@@ -11,7 +11,7 @@ export interface GeneratedImage {
 
 export async function generateImage(
   prompt: string,
-  platform: "instagram" | "pinterest",
+  platform: "instagram" | "pinterest" | "facebook" | "tiktok",
   brandId: string,
   workspaceId: string,
 ): Promise<GeneratedImage> {
@@ -38,7 +38,7 @@ export async function generateImage(
 
 export async function regenerateVariation(
   prompt: string,
-  platform: "instagram" | "pinterest",
+  platform: "instagram" | "pinterest" | "facebook" | "tiktok",
   brandId: string,
   workspaceId: string,
 ): Promise<GeneratedImage> {

@@ -205,10 +205,11 @@ export default function EditPostModal() {
     setError(null);
     setSaving(true);
     try {
-      const wasScheduled = post.status === "scheduled";
+      // Treat failed posts the same as scheduled — they had a schedule, user is choosing to unschedule
+      const wasScheduled = post.status === "scheduled" || post.status === "failed";
 
       if (wasScheduled && !isScheduled) {
-        // Cancel queued publish jobs, then set to draft
+        // Cancel/clean up publish jobs, then revert to draft
         await cancelSchedule(postId);
         await updatePost(postId, {
           caption,
@@ -217,7 +218,10 @@ export default function EditPostModal() {
           social_account_id: socialAccountId,
           status: "draft",
           scheduled_for: null,
+          failure_reason: null,
         });
+        // Navigate to Content Studio so the user can see the draft
+        router.replace("/(tabs)/content");
       } else {
         await updatePost(postId, {
           caption,
@@ -228,9 +232,8 @@ export default function EditPostModal() {
         if (isScheduled) {
           await schedulePost(postId, scheduledFor.toISOString());
         }
+        router.back();
       }
-
-      router.back();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Save failed.");
     } finally {

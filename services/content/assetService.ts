@@ -22,6 +22,22 @@ export async function getAssets(
   return data ?? [];
 }
 
+export type AssetWithUsage = AssetRow & { postCount: number };
+
+export async function getAssetsWithUsage(
+  workspaceId: string,
+): Promise<AssetWithUsage[]> {
+  const { data, error } = await supabase
+    .from("assets")
+    .select("*, post_assets(id)")
+    .eq("workspace_id", workspaceId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return ((data ?? []) as (AssetRow & { post_assets: { id: string }[] })[]).map(
+    (row) => ({ ...row, postCount: row.post_assets?.length ?? 0 }),
+  );
+}
+
 export async function deleteAsset(assetId: string): Promise<void> {
   const { data: asset, error: fetchError } = await supabase
     .from("assets")

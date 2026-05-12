@@ -19,7 +19,7 @@ export async function reschedulePost(
 }
 
 export async function cancelSchedule(postId: string): Promise<void> {
-  // Revert post to approved status and remove queued publish_jobs
+  // Revert post to approved status and remove all publish_jobs for this post
   const { error: postError } = await supabase
     .from("posts")
     .update({ status: "approved", scheduled_for: null })
@@ -30,7 +30,7 @@ export async function cancelSchedule(postId: string): Promise<void> {
     .from("publish_jobs")
     .delete()
     .eq("post_id", postId)
-    .eq("status", "queued");
+    .in("status", ["queued", "failed"]);
   if (jobError) throw jobError;
 
   // Cancel the sleeping Inngest function for this post (non-blocking — ignore errors)

@@ -3,14 +3,16 @@ import { ActivityIndicator, Image, Text, View } from "react-native";
 import { radius, spacing, typography } from "../../constants/theme";
 import { useTheme } from "../../hooks/use-theme";
 
-const ASPECT_RATIOS: Record<"instagram" | "pinterest", number> = {
+const ASPECT_RATIOS: Record<"instagram" | "pinterest" | "facebook" | "tiktok", number> = {
   instagram: 1,        // 1:1
+  facebook: 1,         // 1:1 (standard square page photo)
+  tiktok: 9 / 16,     // 9:16 vertical (portrait photo post)
   pinterest: 2 / 3,   // 2:3 (width/height)
 };
 
 interface CreativePreviewProps {
   publicUrl: string | null;
-  platform: "instagram" | "pinterest";
+  platform: "instagram" | "pinterest" | "facebook" | "tiktok";
   loading?: boolean;
 }
 

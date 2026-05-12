@@ -55,6 +55,18 @@ export async function linkPostAsset(postId: string, assetId: string): Promise<vo
   if (error) throw error;
 }
 
+export async function approvePost(postId: string): Promise<PostRow> {
+  return updatePost(postId, { status: "approved" });
+}
+
+export async function rejectPost(postId: string, feedback: string): Promise<PostRow> {
+  return updatePost(postId, { status: "draft", failure_reason: feedback || null });
+}
+
+export async function submitForReview(postId: string): Promise<PostRow> {
+  return updatePost(postId, { status: "ready_for_review" });
+}
+
 export async function getPosts(
   workspaceId: string,
   filters?: PostFilters,

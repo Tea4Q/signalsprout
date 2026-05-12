@@ -20,8 +20,16 @@ export async function generateImage(
     { body: { prompt, platform, brand_id: brandId, workspace_id: workspaceId } },
   );
   if (error) {
-    const body = await (error as { context?: Response }).context?.json().catch(() => null);
-    const message = body?.error ?? error.message;
+    let message = error.message;
+    try {
+      const ctx = (error as { context?: unknown }).context;
+      if (ctx && typeof (ctx as Response).json === "function") {
+        const body = await (ctx as Response).json();
+        if (body?.error) message = body.error;
+      }
+    } catch {
+      // ignore — use original error.message
+    }
     throw new Error(message);
   }
   if (!data) throw new Error("No image returned from generation");

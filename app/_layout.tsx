@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { ThemeProvider } from "@/context/theme-context";
 import { ToastProvider } from "@/context/toast-context";
 import { WorkspaceProvider, type WorkspaceRole } from "@/context/workspace-context";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { isOnboardingComplete } from "@/app/onboarding";
 import { getMyRole } from "@/services/workspace/memberService";
 import { getMyWorkspaces } from "@/services/workspace/workspaceService";
@@ -276,12 +277,14 @@ function RootLayout() {
 
 export default function RootLayoutWithProviders() {
   return (
-    <ErrorBoundary>
-      <ThemeProvider>
-        <ToastProvider>
-          <RootLayout />
-        </ToastProvider>
-      </ThemeProvider>
-    </ErrorBoundary>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ErrorBoundary>
+        <ThemeProvider>
+          <ToastProvider>
+            <RootLayout />
+          </ToastProvider>
+        </ThemeProvider>
+      </ErrorBoundary>
+    </GestureHandlerRootView>
   );
 }

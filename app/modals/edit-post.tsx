@@ -15,6 +15,7 @@ import { radius, spacing, typography } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { useWorkspace } from "@/context/workspace-context";
 import { CaptionEditor } from "@/components/content/CaptionEditor";
+import { CreativePreview } from "@/components/content/CreativePreview";
 import { HashtagList } from "@/components/content/HashtagList";
 import { ScheduleForm } from "@/components/calendar/ScheduleForm";
 import { AppButton } from "@/components/ui/AppButton";
@@ -24,11 +25,15 @@ import {
   getPost,
   updatePost,
   deletePost,
+  linkPostAsset,
 } from "@/services/scheduling/postService";
 import {
   schedulePost,
   cancelSchedule,
 } from "@/services/scheduling/schedulerService";
+import { generateImage, GeneratedImage } from "@/services/content/imageGenerationService";
+import { uploadExternalImage } from "@/services/content/assetService";
+import { supabase } from "@/lib/supabase";
 import type { Database } from "@/types/database";
 
 type PostRow = Database["public"]["Tables"]["posts"]["Row"];
@@ -78,6 +83,13 @@ export default function EditPostModal() {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Image state
+  const [image, setImage] = useState<GeneratedImage | null>(null);
+  const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null);
+  const [generatingImage, setGeneratingImage] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [imagePrompt, setImagePrompt] = useState("");
+
   const s = styles(colors);
 
   useEffect(() => {
@@ -85,8 +97,9 @@ export default function EditPostModal() {
       setLoadingPost(false);
       return;
     }
-    getPost(postId)
-      .then((p) => {
+    (async () => {
+      try {
+        const p = await getPost(postId);
         setPost(p);
         setCaption(p.caption ?? "");
         setHashtags((p.hashtags as string[] | null) ?? []);
@@ -95,9 +108,28 @@ export default function EditPostModal() {
         setIsScheduled(scheduled);
         if (p.scheduled_for) setScheduledFor(new Date(p.scheduled_for));
         if (p.social_account_id) setSocialAccountId(p.social_account_id);
-      })
-      .catch(() => setError("Failed to load post."))
-      .finally(() => setLoadingPost(false));
+
+        // Load existing post assets
+        const { data: assetData } = await supabase
+          .from("post_assets")
+          .select("assets(id, file_path, mime_type)")
+          .eq("post_id", p.id)
+          .order("sort_order")
+          .limit(1)
+          .single();
+        if (assetData) {
+          const asset = (assetData as { assets: { id: string; file_path: string; mime_type: string | null } | null }).assets;
+          if (asset?.file_path) {
+            const { data: urlData } = supabase.storage.from("assets").getPublicUrl(asset.file_path);
+            setExistingImageUrl(urlData.publicUrl);
+          }
+        }
+      } catch {
+        setError("Failed to load post.");
+      } finally {
+        setLoadingPost(false);
+      }
+    })();
   }, [postId]);
 
   const handleAddHashtag = useCallback(() => {
@@ -108,8 +140,56 @@ export default function EditPostModal() {
     setNewHashtag("");
   }, [newHashtag]);
 
+  const handleGenerateImage = useCallback(async () => {
+    if (!workspaceId || !post) return;
+    if (!imagePrompt.trim()) {
+      setError("Please enter a prompt for the image.");
+      return;
+    }
+    setError(null);
+    setGeneratingImage(true);
+    try {
+      const result = await generateImage(
+        imagePrompt.trim(),
+        post.platform as "instagram" | "pinterest",
+        post.brand_id,
+        workspaceId,
+      );
+      setImage(result);
+      setExistingImageUrl(null);
+      await linkPostAsset(post.id, result.asset_id);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Image generation failed.");
+    } finally {
+      setGeneratingImage(false);
+    }
+  }, [workspaceId, post, imagePrompt]);
+
+  const handleUploadImage = useCallback(async () => {
+    if (!workspaceId || !post) return;
+    setError(null);
+    setUploadingImage(true);
+    try {
+      const result = await uploadExternalImage(workspaceId, post.brand_id);
+      setImage(result);
+      setExistingImageUrl(null);
+      await linkPostAsset(post.id, result.asset_id);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Upload failed.";
+      if (msg !== "No image selected.") setError(msg);
+    } finally {
+      setUploadingImage(false);
+    }
+  }, [workspaceId, post]);
+
   const handleSave = useCallback(async () => {
     if (!postId || !post) return;
+
+    const hasImage = !!(image || existingImageUrl);
+    if ((post.platform === "instagram" || post.platform === "pinterest") && !hasImage) {
+      setError("An image is required for Instagram and Pinterest posts. Generate or upload one above.");
+      return;
+    }
 
     if (isScheduled) {
       if (!socialAccountId) {
@@ -165,6 +245,8 @@ export default function EditPostModal() {
     isScheduled,
     scheduledFor,
     socialAccountId,
+    image,
+    existingImageUrl,
     router,
   ]);
 
@@ -311,6 +393,7 @@ export default function EditPostModal() {
             <View style={s.addTagRow}>
               <View style={{ flex: 1 }}>
                 <AppInput
+                  label=""
                   value={newHashtag}
                   onChangeText={setNewHashtag}
                   placeholder="Add hashtag"
@@ -334,6 +417,48 @@ export default function EditPostModal() {
                   +
                 </Text>
               </Pressable>
+            </View>
+
+            <View style={{ height: spacing.xl }} />
+
+            {/* Image */}
+            <View style={s.imageSection}>
+              <Text style={{ ...typography.caption, color: colors.textSecondary, fontWeight: "600", marginBottom: spacing.sm }}>
+                IMAGE
+              </Text>
+              <CreativePreview
+                publicUrl={image?.public_url ?? existingImageUrl}
+                platform={post.platform as "instagram" | "pinterest"}
+                loading={generatingImage}
+              />
+              <View style={{ height: spacing.md }} />
+              <AppInput
+                label="Image Prompt"
+                value={imagePrompt}
+                onChangeText={setImagePrompt}
+                placeholder="Describe the image to generate…"
+              />
+              <View style={{ height: spacing.sm }} />
+              <View style={{ flexDirection: "row", gap: spacing.sm }}>
+                <View style={{ flex: 1 }}>
+                  <AppButton
+                    label={generatingImage ? "Generating…" : image || existingImageUrl ? "Regenerate" : "Generate"}
+                    onPress={handleGenerateImage}
+                    disabled={generatingImage || uploadingImage || !imagePrompt.trim()}
+                    loading={generatingImage}
+                    variant={image || existingImageUrl ? "secondary" : "primary"}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <AppButton
+                    label={uploadingImage ? "Uploading…" : "Upload Image"}
+                    onPress={handleUploadImage}
+                    disabled={generatingImage || uploadingImage}
+                    loading={uploadingImage}
+                    variant="secondary"
+                  />
+                </View>
+              </View>
             </View>
 
             <View style={{ height: spacing.xl }} />
@@ -426,7 +551,6 @@ export default function EditPostModal() {
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function styles(colors: any) {
   return StyleSheet.create({
     safeArea: {
@@ -455,6 +579,13 @@ function styles(colors: any) {
     readOnlyBanner: {
       backgroundColor: colors.surface,
       borderRadius: radius.md,
+      padding: spacing.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    imageSection: {
+      backgroundColor: colors.surface,
+      borderRadius: radius.lg,
       padding: spacing.lg,
       borderWidth: 1,
       borderColor: colors.border,

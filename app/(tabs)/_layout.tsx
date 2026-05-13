@@ -1,10 +1,11 @@
 import { Tabs } from "expo-router";
 import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Platform, Pressable, Text, View } from "react-native";
 
 import { HapticTab } from "@/components/haptic-tab";
 import { AppModal } from "@/components/ui/AppModal";
 import { IconSymbol } from "@/components/ui/icon-symbol";
+import { WebSidebar } from "@/components/ui/WebSidebar";
 import { spacing, typography } from "@/constants/theme";
 import {
   useWorkspace,
@@ -104,19 +105,25 @@ export default function TabLayout() {
   const { colors } = useTheme();
 
   return (
-    <Tabs
+    <>
+      {Platform.OS === "web" && <WebSidebar />}
+      <View style={Platform.OS === "web" ? { flex: 1, marginLeft: 220 } : { flex: 1 }}>
+      <Tabs
         screenOptions={{
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: colors.textSecondary,
-          tabBarStyle: {
-            backgroundColor: colors.surface,
-            borderTopColor: colors.border,
-            borderTopWidth: 1,
-          },
+          tabBarStyle:
+            Platform.OS === "web"
+              ? { display: "none" }
+              : {
+                  backgroundColor: colors.surface,
+                  borderTopColor: colors.border,
+                  borderTopWidth: 1,
+                },
           tabBarLabelStyle: {
             ...typography.micro,
           },
-          headerShown: true,
+          headerShown: Platform.OS !== "web",
           headerTitle: () => <WorkspaceSwitcher />,
           headerStyle: { backgroundColor: colors.surface },
           headerShadowVisible: false,
@@ -193,5 +200,7 @@ export default function TabLayout() {
         <Tabs.Screen name="index" options={{ href: null }} />
         <Tabs.Screen name="explore" options={{ href: null }} />
       </Tabs>
+      </View>
+    </>
   );
 }

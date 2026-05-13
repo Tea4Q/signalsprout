@@ -85,7 +85,12 @@ export function SocialAccountCard({
                   justifyContent: "center",
                 }}
               >
-                <FontAwesomeIcon icon={platform.icon} size={13} color={platform.color} />
+                <Text style={{ ...typography.micro, color: platform.color, fontWeight: "700" }}>
+                  {(account.account_identifier ?? account.account_name)
+                    .replace(/^@/, "")
+                    .charAt(0)
+                    .toUpperCase()}
+                </Text>
               </View>
             )}
             <Text

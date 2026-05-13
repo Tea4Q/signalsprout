@@ -137,6 +137,10 @@ function RootLayout() {
         // Mark loading done once we have the initial session state
         if (event === "INITIAL_SESSION") {
           setLoading(false);
+          // For returning users whose token is still valid, INITIAL_SESSION
+          // is the only event that fires (SIGNED_IN is not re-fired). Load
+          // workspaces here so workspaceId is populated on page refresh.
+          if (newSession) loadWorkspaces();
         }
         // Reload workspaces on sign-in and token refresh
         if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {

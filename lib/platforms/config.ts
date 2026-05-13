@@ -74,7 +74,7 @@ export const PLATFORMS: Record<PlatformId, PlatformConfig> = {
       `https://www.facebook.com/dialog/oauth?${buildQuery({
         client_id: clientId,
         redirect_uri: redirectUri,
-        scope: "instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement",
+        scope: "instagram_business_basic,instagram_content_publish,pages_show_list,pages_read_engagement",
         response_type: "code",
         state,
       })}`,
@@ -122,7 +122,7 @@ export const PLATFORMS: Record<PlatformId, PlatformConfig> = {
       `https://www.tiktok.com/v2/auth/authorize/?${buildQuery({
         client_key: clientId,
         redirect_uri: redirectUri,
-        scope: "user.info.basic,video.list",
+        scope: "user.info.basic,video.publish",
         response_type: "code",
         state,
         ...(codeChallenge

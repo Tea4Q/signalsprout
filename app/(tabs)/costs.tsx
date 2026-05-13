@@ -295,6 +295,7 @@ export default function CostsScreen() {
   const [creditSummaries, setCreditSummaries] = useState<VendorCreditSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
 
   const loadData = useCallback(
     async (period: MetricPeriod) => {
@@ -420,6 +421,66 @@ export default function CostsScreen() {
           </Text>
         ) : (
           <>
+            {/* What-to-track guidance banner */}
+            {!bannerDismissed && (
+              <View
+                style={[
+                  s.card,
+                  {
+                    borderColor: colors.primarySoft,
+                    backgroundColor: colors.primarySoft,
+                    flexDirection: "row",
+                    alignItems: "flex-start",
+                    gap: spacing.md,
+                  },
+                ]}
+              >
+                <View style={{ flex: 1, gap: spacing.xs }}>
+                  <Text
+                    style={{
+                      ...typography.body,
+                      color: colors.primary,
+                      fontWeight: "700",
+                    }}
+                  >
+                    What to track here
+                  </Text>
+                  <Text
+                    style={{ ...typography.caption, color: colors.primary }}
+                  >
+                    Log every expense that relates to your content operation:
+                    AI generation (OpenAI, Runway), hosting (Vercel, Supabase),
+                    ad spend, subscriptions, and campaign budgets. SignalSprout
+                    uses these figures to calculate Cost / Post and
+                    Cost / Asset on the Analytics screen.
+                  </Text>
+                  <Text
+                    style={{ ...typography.micro, color: colors.primary }}
+                  >
+                    General business expenses (payroll, rent, accounting) belong
+                    in a dedicated tool like QuickBooks or Wave.
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={() => setBannerDismissed(true)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Dismiss guidance banner"
+                >
+                  <Text
+                    style={{
+                      ...typography.body,
+                      color: colors.primary,
+                      fontWeight: "700",
+                      lineHeight: 18,
+                    }}
+                  >
+                    ×
+                  </Text>
+                </Pressable>
+              </View>
+            )}
+
             {/* Total spend card */}
             <View style={s.card}>
               <Text

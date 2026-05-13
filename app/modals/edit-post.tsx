@@ -30,6 +30,7 @@ import {
 import {
   schedulePost,
   cancelSchedule,
+  publishNow,
 } from "@/services/scheduling/schedulerService";
 import { generateImage, GeneratedImage } from "@/services/content/imageGenerationService";
 import { uploadExternalImage } from "@/services/content/assetService";
@@ -80,6 +81,7 @@ export default function EditPostModal() {
   const [socialAccountId, setSocialAccountId] = useState<string | null>(null);
 
   const [saving, setSaving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -253,6 +255,38 @@ export default function EditPostModal() {
     router,
   ]);
 
+  const handlePublishNow = useCallback(() => {
+    if (!postId || !post) return;
+    Alert.alert(
+      "Publish Now",
+      "This will save your current edits and immediately publish the post to your connected social account.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Publish",
+          onPress: async () => {
+            setPublishing(true);
+            setError(null);
+            try {
+              await updatePost(postId, {
+                caption,
+                hashtags,
+                destination_url: destinationUrl.trim() || null,
+                social_account_id: socialAccountId,
+                status: "approved",
+              });
+              await publishNow(postId);
+              router.back();
+            } catch (e: unknown) {
+              setError(e instanceof Error ? e.message : "Publish failed.");
+              setPublishing(false);
+            }
+          },
+        },
+      ],
+    );
+  }, [postId, post, caption, hashtags, destinationUrl, socialAccountId, router]);
+
   const handleDelete = useCallback(() => {
     if (!postId) return;
     Alert.alert(
@@ -375,6 +409,33 @@ export default function EditPostModal() {
           </View>
         ) : (
           <>
+            {/* Post Preview */}
+            <View style={s.previewCard}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.sm }}>
+                <View style={{
+                  width: 8, height: 8, borderRadius: 4,
+                  backgroundColor: post.platform === "instagram" ? "#E1306C" : post.platform === "pinterest" ? "#E60023" : colors.primary,
+                }} />
+                <Text style={{ ...typography.micro, color: colors.textMuted, textTransform: "uppercase", fontWeight: "600", letterSpacing: 0.5 }}>
+                  {post.platform} preview
+                </Text>
+              </View>
+              {caption ? (
+                <Text style={{ ...typography.body, color: colors.textPrimary, lineHeight: 22 }} numberOfLines={5}>
+                  {caption}
+                </Text>
+              ) : (
+                <Text style={{ ...typography.body, color: colors.textMuted }}>No caption yet…</Text>
+              )}
+              {hashtags.length > 0 && (
+                <Text style={{ ...typography.caption, color: colors.secondary, marginTop: spacing.sm }} numberOfLines={2}>
+                  {hashtags.join(" ")}
+                </Text>
+              )}
+            </View>
+
+            <View style={{ height: spacing.lg }} />
+
             {/* Caption */}
             <CaptionEditor
               value={caption}
@@ -520,9 +581,26 @@ export default function EditPostModal() {
                   : "Save as Draft"
               }
               onPress={handleSave}
-              disabled={saving}
+              disabled={saving || publishing}
               loading={saving}
             />
+
+            <View style={{ height: spacing.md }} />
+
+            <Pressable
+              onPress={handlePublishNow}
+              disabled={publishing || saving}
+              style={({ pressed }) => [
+                s.publishNowButton,
+                { opacity: pressed || publishing || saving ? 0.7 : 1 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Publish post now"
+            >
+              <Text style={{ ...typography.body, color: colors.background, fontWeight: "600" }}>
+                {publishing ? "Publishing…" : "⚡ Post Now"}
+              </Text>
+            </Pressable>
 
             <View style={{ height: spacing["3xl"] }} />
 
@@ -616,6 +694,20 @@ function styles(colors: any) {
       padding: spacing.lg,
       borderWidth: 1,
       borderColor: colors.border,
+    },
+    previewCard: {
+      backgroundColor: colors.surfaceAlt,
+      borderRadius: radius.lg,
+      padding: spacing.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    publishNowButton: {
+      height: 48,
+      borderRadius: radius.md,
+      backgroundColor: colors.accent,
+      alignItems: "center" as const,
+      justifyContent: "center" as const,
     },
     deleteButton: {
       alignItems: "center",

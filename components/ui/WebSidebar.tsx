@@ -35,15 +35,10 @@ export function WebSidebar() {
   return (
     <View
       style={{
-        position: "fixed" as never,
-        left: 0,
-        top: 0,
-        bottom: 0,
         width: 220,
         backgroundColor: colors.surface,
         borderRightWidth: 1,
         borderRightColor: colors.border,
-        zIndex: 1000,
         paddingTop: spacing["3xl"],
         paddingBottom: spacing["3xl"],
         paddingHorizontal: spacing.lg,

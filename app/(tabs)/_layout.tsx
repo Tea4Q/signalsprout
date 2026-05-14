@@ -103,27 +103,26 @@ function WorkspaceSwitcher() {
 
 export default function TabLayout() {
   const { colors } = useTheme();
+  const isWeb = Platform.OS === "web";
 
   return (
-    <>
-      {Platform.OS === "web" && <WebSidebar />}
-      <View style={Platform.OS === "web" ? { flex: 1, marginLeft: 220 } : { flex: 1 }}>
+    <View style={{ flex: 1, flexDirection: isWeb ? "row" : "column" }}>
+      {isWeb && <WebSidebar />}
+      <View style={{ flex: 1 }}>
       <Tabs
+        tabBar={isWeb ? () => null : undefined}
         screenOptions={{
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: colors.textSecondary,
-          tabBarStyle:
-            Platform.OS === "web"
-              ? { display: "none" }
-              : {
-                  backgroundColor: colors.surface,
-                  borderTopColor: colors.border,
-                  borderTopWidth: 1,
-                },
+          tabBarStyle: {
+            backgroundColor: colors.surface,
+            borderTopColor: colors.border,
+            borderTopWidth: 1,
+          },
           tabBarLabelStyle: {
             ...typography.micro,
           },
-          headerShown: Platform.OS !== "web",
+          headerShown: !isWeb,
           headerTitle: () => <WorkspaceSwitcher />,
           headerStyle: { backgroundColor: colors.surface },
           headerShadowVisible: false,
@@ -201,6 +200,6 @@ export default function TabLayout() {
         <Tabs.Screen name="explore" options={{ href: null }} />
       </Tabs>
       </View>
-    </>
+    </View>
   );
 }

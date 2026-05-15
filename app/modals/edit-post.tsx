@@ -3,13 +3,14 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Switch,
   Text,
   View,
+  Platform
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { radius, spacing, typography } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
@@ -256,39 +257,45 @@ export default function EditPostModal() {
   ]);
 
   const handlePublishNow = useCallback(() => {
-    if (!postId || !post) return;
+  if (!postId || !post) return;
+
+  const doPublish = async () => {
+    setPublishing(true);
+    setError(null);
+    try {
+      await updatePost(postId, {
+        caption,
+        hashtags,
+        destination_url: destinationUrl.trim() || null,
+        social_account_id: socialAccountId,
+        status: "approved",
+      });
+      await publishNow(postId);
+      router.back();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Publish failed.");
+      setPublishing(false);
+    }
+  };
+
+  if (Platform.OS === "web") {
+    if (window.confirm("Publish this post immediately to your connected social account?")) {
+      doPublish();
+    }
+  } else {
     Alert.alert(
       "Publish Now",
-      "This will save your current edits and immediately publish the post to your connected social account.",
+      "This will save your current edits and immediately publish the post.",
       [
         { text: "Cancel", style: "cancel" },
-        {
-          text: "Publish",
-          onPress: async () => {
-            setPublishing(true);
-            setError(null);
-            try {
-              await updatePost(postId, {
-                caption,
-                hashtags,
-                destination_url: destinationUrl.trim() || null,
-                social_account_id: socialAccountId,
-                status: "approved",
-              });
-              await publishNow(postId);
-              router.back();
-            } catch (e: unknown) {
-              setError(e instanceof Error ? e.message : "Publish failed.");
-              setPublishing(false);
-            }
-          },
-        },
+        { text: "Publish", onPress: doPublish },
       ],
     );
-  }, [postId, post, caption, hashtags, destinationUrl, socialAccountId, router]);
+  }
+}, [postId, post, caption, hashtags, destinationUrl, socialAccountId, router]);
 
   const handleDelete = useCallback(() => {
-    if (!postId) return;
+    if (!postId || !post) return;
     Alert.alert(
       "Delete Post",
       "This post will be permanently deleted. This cannot be undone.",
@@ -310,7 +317,7 @@ export default function EditPostModal() {
         },
       ],
     );
-  }, [postId, router]);
+  }, [postId, post, router]);
 
   if (!workspaceId || loadingPost) {
     return (

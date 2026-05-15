@@ -45,6 +45,19 @@ const MONTH_NAMES = [
   "July", "August", "September", "October", "November", "December",
 ];
 
+function localDateKey(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// For published posts use actual publish date; for others use scheduled date.
+function postDateKey(post: PostRow): string | null {
+  const iso = post.status === "published"
+    ? (post.published_at ?? post.scheduled_for)
+    : (post.scheduled_for ?? post.published_at);
+  return iso ? localDateKey(iso) : null;
+}
+
 export default function CalendarScreen() {
   const { colors } = useTheme();
   const router = useRouter();
@@ -98,6 +111,7 @@ export default function CalendarScreen() {
   );
 
   const CALENDAR_STATUSES = ["scheduled", "published", "approved", "publishing", "failed"];
+
   const scheduledPosts = useMemo(
     () =>
       allPosts.filter(
@@ -119,9 +133,8 @@ export default function CalendarScreen() {
   const dots = useMemo<DayDots>(() => {
     const map: DayDots = {};
     for (const post of scheduledPosts) {
-      const dateStr = post.scheduled_for ?? post.published_at;
-      if (!dateStr) continue;
-      const dateKey = dateStr.slice(0, 10);
+      const dateKey = postDateKey(post);
+      if (!dateKey) continue;
       if (!map[dateKey]) map[dateKey] = [];
       map[dateKey].push(post.platform as "instagram" | "pinterest");
     }
@@ -154,8 +167,7 @@ export default function CalendarScreen() {
     (date: string) => {
       setSelectedDate(date);
       const dayPosts = scheduledPosts.filter(
-        (p) =>
-          (p.scheduled_for ?? p.published_at)?.slice(0, 10) === date,
+        (p) => postDateKey(p) === date,
       );
       setDaySheetPosts(dayPosts);
       setSheetVisible(true);

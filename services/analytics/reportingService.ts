@@ -253,13 +253,22 @@ export async function getPerformanceByPlatform(
     );
   }
 
-  return Array.from(agg.entries()).map(([platform, v]) => ({
-    platform: platform as PlatformType,
-    impressions: v.impressions,
-    saves: v.saves,
-    avgEngagementRate: v.count > 0 ? v.engSum / v.count : 0,
-    postCount: postCountByPlatform.get(platform) ?? 0,
-  }));
+  // Build result from posts (not just agg) so platforms with 0 metrics still appear.
+  const allPlatforms = new Set([
+    ...Array.from(agg.keys()),
+    ...Array.from(postCountByPlatform.keys()),
+  ]);
+
+  return Array.from(allPlatforms).map((platform) => {
+    const v = agg.get(platform);
+    return {
+      platform: platform as PlatformType,
+      impressions: v?.impressions ?? 0,
+      saves: v?.saves ?? 0,
+      avgEngagementRate: v && v.count > 0 ? v.engSum / v.count : 0,
+      postCount: postCountByPlatform.get(platform) ?? 0,
+    };
+  });
 }
 
 export async function getPerformanceByContentType(

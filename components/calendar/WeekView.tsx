@@ -117,7 +117,9 @@ function DraggablePill({
   }));
 
   const color = PLATFORM_COLOR[post.platform] ?? colors.primary;
-  const postDate = post.scheduled_for ?? post.published_at;
+  const postDate = post.status === "published"
+    ? (post.published_at ?? post.scheduled_for)
+    : (post.scheduled_for ?? post.published_at);
   const time = postDate
     ? new Date(postDate).toLocaleTimeString(undefined, {
         hour: "2-digit",
@@ -299,7 +301,10 @@ export function WeekView({
     const map: Record<string, PostRow[]> = {};
     for (const k of weekDayKeys) map[k] = [];
     for (const post of posts) {
-      const key = (post.scheduled_for ?? post.published_at)?.slice(0, 10);
+      const raw = post.status === "published"
+        ? (post.published_at ?? post.scheduled_for)
+        : (post.scheduled_for ?? post.published_at);
+      const key = raw ? toDateKey(new Date(raw)) : undefined;
       if (key && key in map) map[key].push(post);
     }
     return map;

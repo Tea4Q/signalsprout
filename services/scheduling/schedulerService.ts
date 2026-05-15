@@ -45,6 +45,15 @@ export async function publishNow(postId: string): Promise<void> {
   const { data, error } = await supabase.functions.invoke("publish-now", {
     body: { post_id: postId },
   });
-  if (error) throw error;
+  if (error) {
+    // Try to extract the real error message from the edge function response body
+    try {
+      const body = await (error as unknown as { context?: { json?: () => Promise<{ error?: string }> } }).context?.json?.();
+      if (body?.error) throw new Error(body.error);
+    } catch (inner) {
+      if (inner instanceof Error && inner !== error) throw inner;
+    }
+    throw error;
+  }
   if (data?.error) throw new Error(data.error);
 }

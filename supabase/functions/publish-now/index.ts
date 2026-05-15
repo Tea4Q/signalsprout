@@ -284,6 +284,27 @@ Deno.serve(async (req: Request) => {
       }),
     ]);
 
+    // Fire post/published Inngest event for observability and downstream processing.
+    // Non-blocking: a delivery failure does not fail the publish operation.
+    const inngestEventKey = Deno.env.get("INNGEST_EVENT_KEY");
+    if (inngestEventKey) {
+      fetch(`https://inn.gs/e/${inngestEventKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "post/published",
+          data: {
+            post_id,
+            platform: post.platform,
+            external_post_id: externalPostId,
+            mode: "publish_now",
+          },
+        }),
+      }).catch((err) =>
+        console.warn("Inngest post/published event failed (non-fatal):", err),
+      );
+    }
+
     return new Response(
       JSON.stringify({ success: true, external_post_id: externalPostId }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },

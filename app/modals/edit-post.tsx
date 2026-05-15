@@ -259,6 +259,11 @@ export default function EditPostModal() {
   const handlePublishNow = useCallback(() => {
   if (!postId || !post) return;
 
+  if (!socialAccountId) {
+    setError("Please select a social account before publishing.");
+    return;
+  }
+
   const doPublish = async () => {
     setPublishing(true);
     setError(null);

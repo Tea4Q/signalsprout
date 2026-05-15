@@ -32,26 +32,34 @@ Deno.serve(async (_req) => {
 
   for (const post of posts ?? []) {
     try {
-      // Fetch access token from credential_vault
-      const { data: vault } = await supabase
-        .from("credential_vault")
-        .select("encrypted_value")
-        .eq("workspace_id", post.workspace_id)
-        .eq("service", post.platform)
-        .eq("name", "access_token")
-        .maybeSingle();
-
-      if (!vault) {
+      // Fetch access token from social_accounts (set by oauth-exchange)
+      if (!post.social_account_id) {
         results.push({
           postId: post.id,
           platform: post.platform,
           success: false,
-          error: "No access token in vault",
+          error: "No social account linked to post",
         });
         continue;
       }
 
-      const accessToken = vault.encrypted_value;
+      const { data: account } = await supabase
+        .from("social_accounts")
+        .select("access_token")
+        .eq("id", post.social_account_id)
+        .single();
+
+      if (!account?.access_token) {
+        results.push({
+          postId: post.id,
+          platform: post.platform,
+          success: false,
+          error: "No access token on social account",
+        });
+        continue;
+      }
+
+      const accessToken = account.access_token;
       let metrics: Record<string, number> = {};
 
       if (post.platform === "instagram") {
@@ -135,7 +143,7 @@ async function fetchInstagramMetrics(
 ): Promise<Record<string, number>> {
   const fields =
     "impressions,reach,likes_count,comments_count,saves,shares,total_interactions";
-  const url = `https://graph.instagram.com/v19.0/${mediaId}/insights?metric=${fields}&access_token=${accessToken}`;
+  const url = `https://graph.facebook.com/v20.0/${mediaId}/insights?metric=${fields}&access_token=${accessToken}`;
 
   const res = await fetch(url);
   if (!res.ok) {

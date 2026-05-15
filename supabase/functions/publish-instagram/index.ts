@@ -107,7 +107,7 @@ Deno.serve(async (_req: Request) => {
       }
 
       const containerRes = await fetch(
-        `https://graph.instagram.com/v19.0/${igUserId}/media`,
+        `https://graph.facebook.com/v20.0/${igUserId}/media`,
         {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -124,7 +124,7 @@ Deno.serve(async (_req: Request) => {
 
       // ── Step 2: Publish container ──
       const publishRes = await fetch(
-        `https://graph.instagram.com/v19.0/${igUserId}/media_publish`,
+        `https://graph.facebook.com/v20.0/${igUserId}/media_publish`,
         {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },

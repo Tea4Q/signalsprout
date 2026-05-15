@@ -110,8 +110,9 @@ function DayPostBlock({
 
   const color = PLATFORM_COLOR[post.platform] ?? colors.primary;
   const preview = (post.caption ?? post.hook ?? "").slice(0, 55) || "(no caption)";
-  const timeStr = post.scheduled_for
-    ? new Date(post.scheduled_for).toLocaleTimeString(undefined, {
+  const postDate = post.scheduled_for ?? post.published_at;
+  const timeStr = postDate
+    ? new Date(postDate).toLocaleTimeString(undefined, {
         hour: "2-digit",
         minute: "2-digit",
       })
@@ -188,7 +189,11 @@ export function DayView({
   const isToday = dateKey === todayKey;
 
   const dayPosts = useMemo(
-    () => posts.filter((p) => p.scheduled_for?.slice(0, 10) === dateKey),
+    () =>
+      posts.filter((p) => {
+        const d = p.scheduled_for ?? p.published_at;
+        return d?.slice(0, 10) === dateKey;
+      }),
     [posts, dateKey],
   );
 
@@ -315,9 +320,8 @@ export function DayView({
 
             {/* Post blocks (absolute positioned) */}
             {dayPosts.map((post) => {
-              const h = post.scheduled_for
-                ? new Date(post.scheduled_for).getHours()
-                : START_HOUR;
+              const postDate = post.scheduled_for ?? post.published_at;
+              const h = postDate ? new Date(postDate).getHours() : START_HOUR;
               const clampedHour = Math.max(START_HOUR, Math.min(END_HOUR - 1, h));
               return (
                 <DayPostBlock

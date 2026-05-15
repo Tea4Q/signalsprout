@@ -97,8 +97,15 @@ export default function CalendarScreen() {
     }, [loadingWorkspace, loadAll]),
   );
 
+  const CALENDAR_STATUSES = ["scheduled", "published", "approved", "publishing", "failed"];
   const scheduledPosts = useMemo(
-    () => allPosts.filter((p) => p.scheduled_for),
+    () =>
+      allPosts.filter(
+        (p) =>
+          CALENDAR_STATUSES.includes(p.status) &&
+          (p.scheduled_for || p.published_at),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [allPosts],
   );
 
@@ -112,8 +119,9 @@ export default function CalendarScreen() {
   const dots = useMemo<DayDots>(() => {
     const map: DayDots = {};
     for (const post of scheduledPosts) {
-      if (!post.scheduled_for) continue;
-      const dateKey = post.scheduled_for.slice(0, 10);
+      const dateStr = post.scheduled_for ?? post.published_at;
+      if (!dateStr) continue;
+      const dateKey = dateStr.slice(0, 10);
       if (!map[dateKey]) map[dateKey] = [];
       map[dateKey].push(post.platform as "instagram" | "pinterest");
     }
@@ -146,7 +154,8 @@ export default function CalendarScreen() {
     (date: string) => {
       setSelectedDate(date);
       const dayPosts = scheduledPosts.filter(
-        (p) => p.scheduled_for?.slice(0, 10) === date,
+        (p) =>
+          (p.scheduled_for ?? p.published_at)?.slice(0, 10) === date,
       );
       setDaySheetPosts(dayPosts);
       setSheetVisible(true);

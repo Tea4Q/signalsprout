@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,12 +10,12 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Image } from "expo-image";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { supabase } from "../../lib/supabase";
 import { spacing, radius, typography } from "../../constants/theme";
 import { useTheme } from "../../hooks/use-theme";
 import { AppBadge, BadgeVariant } from "../ui/AppBadge";
+import { CreativePreview } from "../content/CreativePreview";
 import { getPostAuditLog, type AuditLogEntry } from "../../services/scheduling/publishQueueService";
 import type { Database } from "../../types/database";
 
@@ -63,50 +62,6 @@ export interface PostDetailSheetProps {
   onRetry?: (postId: string) => void;
 }
 
-// ── Media Cell ────────────────────────────────────────────────────────────────
-
-interface MediaCellProps {
-  asset: PostAsset;
-  colors: ReturnType<typeof useTheme>["colors"];
-}
-
-function MediaCell({ asset, colors }: MediaCellProps) {
-  const [hovered, setHovered] = useState(false);
-  return (
-    <View style={[mediaCellStyles.container, { borderColor: colors.border }]}>
-      <Image
-        source={{ uri: asset.publicUrl }}
-        style={mediaCellStyles.image}
-        contentFit="cover"
-        accessibilityLabel="Post media"
-      />
-      {Platform.OS === "web" ? (
-        <View
-          style={[mediaCellStyles.overlay, hovered && mediaCellStyles.overlayVisible]}
-          {...({ onMouseEnter: () => setHovered(true), onMouseLeave: () => setHovered(false) } as object)}
-        />
-      ) : null}
-    </View>
-  );
-}
-
-const mediaCellStyles = StyleSheet.create({
-  container: {
-    width: "49%",
-    aspectRatio: 1,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    overflow: "hidden",
-    backgroundColor: "#00000010",
-  },
-  image: { width: "100%", height: "100%" },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "transparent",
-    borderRadius: radius.lg,
-  },
-  overlayVisible: { backgroundColor: "rgba(0,0,0,0.35)" },
-});
 
 // ── Main Sheet ────────────────────────────────────────────────────────────────
 
@@ -204,6 +159,14 @@ export function PostDetailSheet({
         minute: "2-digit",
       })
     : null;
+  const publishedDate = post.published_at
+    ? new Date(post.published_at).toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : null;
   const platformLabel = PLATFORM_LABEL[post.platform] ?? post.platform;
 
   const handleDeletePress = () => {
@@ -274,25 +237,16 @@ export function PostDetailSheet({
 
         <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
 
-          {/* ── Media Grid ───────────────────────────────────────────── */}
+          {/* ── Creative Preview ─────────────────────────────────────── */}
           <View style={s.section}>
-            <Text style={s.sectionLabel}>MEDIA</Text>
-            {loadingAssets ? (
-              <ActivityIndicator color={colors.primary} style={{ marginVertical: spacing.lg }} />
-            ) : assets.length === 0 ? (
-              <View style={s.mediaEmpty}>
-                <MaterialIcons name="image" size={28} color={colors.textMuted} />
-                <Text style={{ ...typography.caption, color: colors.textMuted, marginTop: spacing.xs }}>
-                  No media attached
-                </Text>
-              </View>
-            ) : (
-              <View style={s.mediaGrid}>
-                {assets.map((asset) => (
-                  <MediaCell key={asset.id} asset={asset} colors={colors} />
-                ))}
-              </View>
-            )}
+            <Text style={s.sectionLabel}>PREVIEW</Text>
+            <CreativePreview
+              publicUrl={assets[0]?.publicUrl ?? null}
+              platform={post.platform as "instagram" | "pinterest" | "facebook" | "tiktok"}
+              loading={loadingAssets}
+              caption={post.caption ?? undefined}
+              hashtags={post.hashtags ?? undefined}
+            />
           </View>
 
           {/* ── Content Preview ──────────────────────────────────────── */}
@@ -410,6 +364,13 @@ export function PostDetailSheet({
                   <MaterialIcons name="schedule" size={14} color={colors.textMuted} />
                   <Text style={s.detailLabel}>Scheduled For</Text>
                   <Text style={s.detailValue}>{scheduledDate}</Text>
+                </View>
+              )}
+              {publishedDate && (
+                <View style={[s.detailCard, { backgroundColor: colors.surfaceAlt, width: "100%" }]}>
+                  <MaterialIcons name="check-circle" size={14} color={colors.success} />
+                  <Text style={s.detailLabel}>Published At</Text>
+                  <Text style={[s.detailValue, { color: colors.success }]}>{publishedDate}</Text>
                 </View>
               )}
             </View>
@@ -616,20 +577,6 @@ function makeStyles(colors: Record<string, string>) {
       fontWeight: "600",
       letterSpacing: 0.8,
     } as object,
-    mediaGrid: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: spacing.sm,
-      justifyContent: "space-between",
-    },
-    mediaEmpty: {
-      alignItems: "center",
-      justifyContent: "center",
-      height: 80,
-      borderRadius: radius.lg,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
     contentBox: {
       borderRadius: radius.lg,
       borderWidth: 1,

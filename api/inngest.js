@@ -57,12 +57,40 @@ const publishScheduledPost = inngest.createFunction(
   },
 );
 
+const trackPublishedPost = inngest.createFunction(
+  {
+    id: "track-published-post",
+    name: "Track Published Post",
+    triggers: [{ event: "post/published" }],
+  },
+  async ({ event, step }) => {
+    const { post_id, platform, external_post_id, mode } = event.data;
+    // Placeholder for post-publish processing:
+    // analytics sync, notifications, credit deduction, etc.
+    return { post_id, platform, external_post_id, mode, received: true };
+  },
+);
+
 const serveOrigin =
   process.env.INNGEST_SERVE_ORIGIN ||
   (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined);
 
+const trackPublishedPost = inngest.createFunction(
+  {
+    id: "track-published-post",
+    name: "Track Published Post",
+    triggers: [{ event: "post/published" }],
+  },
+  async ({ event }) => {
+    const { post_id, platform, external_post_id, mode } = event.data;
+    // Placeholder for post-publish processing:
+    // analytics sync, notifications, credit deduction, etc.
+    return { post_id, platform, external_post_id, mode, received: true };
+  },
+);
+
 module.exports = serve({
   client: inngest,
-  functions: [publishScheduledPost],
+  functions: [publishScheduledPost, trackPublishedPost],
   ...(serveOrigin ? { serveOrigin } : {}),
 });

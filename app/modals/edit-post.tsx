@@ -506,6 +506,8 @@ export default function EditPostModal() {
                 publicUrl={image?.public_url ?? existingImageUrl}
                 platform={post.platform as "instagram" | "pinterest"}
                 loading={generatingImage}
+                caption={caption}
+                hashtags={hashtags}
               />
               <View style={{ height: spacing.md }} />
               <AppInput

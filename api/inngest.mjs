@@ -1,6 +1,7 @@
-// CommonJS handler — avoids ESM/CJS mismatch from root tsconfig "module": "ES2022"
-const { serve } = require("inngest/node");
-const { Inngest } = require("inngest");
+// ESM handler — inngest v4 is ESM-only ("type":"module"), so require() is not available.
+// Vercel treats .mjs files as ESM regardless of the root package.json.
+import { serve } from "inngest/node";
+import { Inngest } from "inngest";
 
 const inngest = new Inngest({
   id: "signalsprout",
@@ -8,9 +9,6 @@ const inngest = new Inngest({
   // Env var is INNGEST_API_KEY; fall back to INNGEST_EVENT_KEY for older configs
   eventKey: process.env.INNGEST_API_KEY || process.env.INNGEST_EVENT_KEY,
 });
-
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 const publishScheduledPost = inngest.createFunction(
   {
@@ -85,7 +83,7 @@ const trackPublishedPost = inngest.createFunction(
   },
 );
 
-module.exports = serve({
+export default serve({
   client: inngest,
   functions: [publishScheduledPost, trackPublishedPost],
   ...(serveOrigin ? { serveOrigin } : {}),

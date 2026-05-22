@@ -6,6 +6,7 @@ import type { SocialAccount } from "@/services/social/socialAccountService";
 import { isTokenExpired, isTokenExpiringSoon } from "@/services/social/socialAccountService";
 import { FontAwesomeIcon } from "@fortawesome/react-native-fontawesome";
 import { ActivityIndicator, Image, Pressable, Text, View } from "react-native";
+import { useState } from "react";
 
 interface SocialAccountCardProps {
   platform: PlatformConfig;
@@ -25,6 +26,7 @@ export function SocialAccountCard({
   onDisconnect,
 }: SocialAccountCardProps) {
   const { colors } = useTheme();
+  const [avatarError, setAvatarError] = useState(false);
 
   const isConnected = !!account;
   const expired = account ? isTokenExpired(account) : false;
@@ -68,11 +70,12 @@ export function SocialAccountCard({
       {isConnected && account ? (
         <View style={{ gap: spacing.xs }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-            {account.avatar_url ? (
+            {account.avatar_url && !avatarError ? (
               <Image
                 source={{ uri: account.avatar_url }}
                 style={{ width: 28, height: 28, borderRadius: 14 }}
                 accessibilityLabel={`${account.account_name} avatar`}
+                onError={() => setAvatarError(true)}
               />
             ) : (
               <View

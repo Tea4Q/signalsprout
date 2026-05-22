@@ -134,7 +134,8 @@ export default function SocialAccountsScreen() {
       const CLIENT_IDS: Record<string, string | undefined> = {
         instagram: process.env.EXPO_PUBLIC_INSTAGRAM_CLIENT_ID,
         pinterest: process.env.EXPO_PUBLIC_PINTEREST_CLIENT_ID,
-        facebook: process.env.EXPO_PUBLIC_FACEBOOK_CLIENT_ID,
+        // Facebook and Instagram share the same Meta app — fall back to Instagram client ID
+        facebook: process.env.EXPO_PUBLIC_FACEBOOK_CLIENT_ID ?? process.env.EXPO_PUBLIC_INSTAGRAM_CLIENT_ID,
         tiktok: process.env.EXPO_PUBLIC_TIKTOK_CLIENT_ID,
         x: process.env.EXPO_PUBLIC_X_CLIENT_ID,
         linkedin: process.env.EXPO_PUBLIC_LINKEDIN_CLIENT_ID,

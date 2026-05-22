@@ -26,19 +26,26 @@ export default function OAuthCallbackPage() {
         // Expo Router may not have finished hydrating search params yet.
         const win = (globalThis as any);
         const search = win?.location?.search ?? "";
+        const hash = win?.location?.hash ?? "";
         const params = new URLSearchParams(search);
-        const code = params.get("code");
-        const state = params.get("state");
-        const error = params.get("error");
-        const errorDescription = params.get("error_description");
+        // Facebook Business Login (config_id) occasionally returns code in the
+        // hash fragment — check both locations.
+        const hashParams = new URLSearchParams(hash.replace(/^#/, ""));
+        const code = params.get("code") ?? hashParams.get("code");
+        const state = params.get("state") ?? hashParams.get("state");
+        const error = params.get("error") ?? hashParams.get("error");
+        const errorDescription = params.get("error_description") ?? hashParams.get("error_description");
+
+        console.log("[oauth/callback] search:", search, "hash:", hash, "code:", !!code, "state:", !!state, "error:", error);
 
         if (error) {
           throw new Error(errorDescription ?? error);
         }
 
         if (!code) {
-          router.replace("/(tabs)/social-accounts");
-          return;
+          const debugInfo = `No code returned. search="${search}" hash="${hash}"`;
+          console.error("[oauth/callback]", debugInfo);
+          throw new Error("Facebook did not return an authorization code. Please try connecting again.");
         }
 
         const storedState = ss?.getItem("oauth_state");

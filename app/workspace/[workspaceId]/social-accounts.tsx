@@ -1,4 +1,5 @@
 import { SocialAccountCard } from "@/components/social/SocialAccountCard";
+import { FacebookSetupModal } from "@/components/social/FacebookSetupModal";
 import { InstagramSetupModal } from "@/components/social/InstagramSetupModal";
 import { spacing, typography } from "@/constants/theme";
 import { useToast } from "@/context/toast-context";
@@ -68,6 +69,7 @@ export default function SocialAccountsScreen() {
   const [connecting, setConnecting] = useState<PlatformId | null>(null);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [instagramSetupVisible, setInstagramSetupVisible] = useState(false);
+  const [facebookSetupVisible, setFacebookSetupVisible] = useState(false);
   const connectingRef = useRef(false);
   // Cached oauth result read from sessionStorage on mount (before workspaceId is ready)
   const pendingOauthToast = useRef<{ type: string; platform?: string; message?: string } | null>(null);
@@ -226,6 +228,10 @@ export default function SocialAccountsScreen() {
         setInstagramSetupVisible(true);
         return;
       }
+      if (platformId === "facebook") {
+        setFacebookSetupVisible(true);
+        return;
+      }
       await doOAuthConnect(platformId);
     },
     [doOAuthConnect],
@@ -324,6 +330,14 @@ export default function SocialAccountsScreen() {
           // window.location.href is synchronous within the same event loop tick.
           setInstagramSetupVisible(false);
           setTimeout(() => doOAuthConnect("instagram"), 0);
+        }}
+      />
+      <FacebookSetupModal
+        visible={facebookSetupVisible}
+        onClose={() => setFacebookSetupVisible(false)}
+        onContinue={() => {
+          setFacebookSetupVisible(false);
+          setTimeout(() => doOAuthConnect("facebook"), 0);
         }}
       />
     </SafeAreaView>

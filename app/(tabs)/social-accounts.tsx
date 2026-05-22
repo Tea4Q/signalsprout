@@ -5,6 +5,7 @@ import { useWorkspace } from "@/context/workspace-context";
 import { useTheme } from "@/hooks/use-theme";
 import { PLATFORM_LIST, type PlatformId } from "@/lib/platforms/config";
 import { supabase } from "@/lib/supabase";
+import { FacebookSetupModal } from "@/components/social/FacebookSetupModal";
 import { InstagramSetupModal } from "@/components/social/InstagramSetupModal";
 import {
   disconnectSocialAccount,
@@ -70,6 +71,7 @@ export default function SocialAccountsScreen() {
   const [connecting, setConnecting] = useState<PlatformId | null>(null);
   const [disconnecting, setDisconnecting] = useState<string | null>(null); // accountId
   const [instagramSetupVisible, setInstagramSetupVisible] = useState(false);
+  const [facebookSetupVisible, setFacebookSetupVisible] = useState(false);
   const connectingRef = useRef(false);
   // Cached oauth result read from sessionStorage on mount (before workspaceId is ready)
   const pendingOauthToast = useRef<{ type: string; platform?: string; message?: string } | null>(null);
@@ -264,9 +266,13 @@ export default function SocialAccountsScreen() {
         showToast("Select a workspace before connecting accounts.", "error");
         return;
       }
-      // Show setup guide for Instagram (always — it reminds users of requirements)
+      // Show setup guide for Instagram and Facebook before OAuth
       if (platformId === "instagram") {
         setInstagramSetupVisible(true);
+        return;
+      }
+      if (platformId === "facebook") {
+        setFacebookSetupVisible(true);
         return;
       }
       await doOAuthConnect(platformId);
@@ -385,12 +391,16 @@ export default function SocialAccountsScreen() {
         visible={instagramSetupVisible}
         onClose={() => setInstagramSetupVisible(false)}
         onContinue={() => {
-          // Close the modal first so the touch gesture finishes cleanly
-          // (avoids "Cannot record touch end without a touch start" warning).
-          // OAuth redirect still preserves user-activation on web because
-          // window.location.href is synchronous within the same event loop tick.
           setInstagramSetupVisible(false);
           setTimeout(() => doOAuthConnect("instagram"), 0);
+        }}
+      />
+      <FacebookSetupModal
+        visible={facebookSetupVisible}
+        onClose={() => setFacebookSetupVisible(false)}
+        onContinue={() => {
+          setFacebookSetupVisible(false);
+          setTimeout(() => doOAuthConnect("facebook"), 0);
         }}
       />
     </SafeAreaView>

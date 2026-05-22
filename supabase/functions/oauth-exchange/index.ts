@@ -113,6 +113,81 @@ async function exchangeInstagram(
   };
 }
 
+async function exchangeFacebook(
+  code: string,
+  redirectUri: string,
+): Promise<TokenResult> {
+  // Facebook and Instagram share the same Meta app — fall back to Instagram credentials.
+  const clientId =
+    Deno.env.get("FACEBOOK_CLIENT_ID") ?? Deno.env.get("INSTAGRAM_CLIENT_ID");
+  const clientSecret =
+    Deno.env.get("FACEBOOK_CLIENT_SECRET") ?? Deno.env.get("INSTAGRAM_CLIENT_SECRET");
+  if (!clientId || !clientSecret) {
+    throw new Error("Missing Facebook OAuth credentials (FACEBOOK_CLIENT_ID / FACEBOOK_CLIENT_SECRET)");
+  }
+
+  // Step 1: Short-lived User Access Token
+  const tokenRes = await fetch("https://graph.facebook.com/v20.0/oauth/access_token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      redirect_uri: redirectUri,
+      code,
+    }),
+  });
+  if (!tokenRes.ok) {
+    const err = await tokenRes.text();
+    throw new Error(`Facebook token exchange failed: ${err}`);
+  }
+  const { access_token: shortToken } = await tokenRes.json();
+
+  // Step 2: Exchange for long-lived User Access Token (~60 days)
+  const llRes = await fetch(
+    `https://graph.facebook.com/oauth/access_token?grant_type=fb_exchange_token` +
+      `&client_id=${encodeURIComponent(clientId)}` +
+      `&client_secret=${encodeURIComponent(clientSecret)}` +
+      `&fb_exchange_token=${encodeURIComponent(shortToken)}`,
+  );
+  if (!llRes.ok) {
+    throw new Error(`Facebook long-lived token exchange failed: ${await llRes.text()}`);
+  }
+  const { access_token: longToken } = await llRes.json();
+
+  // Step 3: Get Facebook Pages managed by the user
+  const pagesRes = await fetch(
+    `https://graph.facebook.com/v20.0/me/accounts?access_token=${encodeURIComponent(longToken)}`,
+  );
+  if (!pagesRes.ok) {
+    throw new Error(`Failed to fetch Facebook Pages: ${await pagesRes.text()}`);
+  }
+  const pagesData = await pagesRes.json();
+  const pages: Array<{ id: string; name: string; access_token: string }> =
+    pagesData.data ?? [];
+
+  if (pages.length === 0) {
+    throw new Error(
+      "No Facebook Pages found. Please create a Facebook Page and grant admin access, " +
+        "then reconnect. Pages are required to publish content via Facebook.",
+    );
+  }
+
+  // Use the first page (the Meta Business Login dialog lets the user pick which page to share)
+  const page = pages[0];
+
+  return {
+    accessToken: longToken, // stored so publish-facebook can call /me/accounts at publish time
+    refreshToken: null,
+    expiresAt: null, // long-lived tokens don't carry an expiry in the exchange response
+    accountName: page.name,
+    accountHandle: page.id,
+    externalAccountId: page.id,
+    avatarUrl: null,
+    scopes: "pages_manage_posts,pages_read_engagement,pages_show_list",
+  };
+}
+
 async function exchangePinterest(
   code: string,
   redirectUri: string,
@@ -389,6 +464,8 @@ Deno.serve(async (req: Request) => {
     let result: TokenResult;
     if (platform === "instagram") {
       result = await exchangeInstagram(code, redirectUri);
+    } else if (platform === "facebook") {
+      result = await exchangeFacebook(code, redirectUri);
     } else if (platform === "pinterest") {
       result = await exchangePinterest(code, redirectUri);
     } else {

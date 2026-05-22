@@ -130,10 +130,10 @@ Deno.serve(async (req: Request) => {
     // Fire Inngest event so the publish-scheduled-post function can sleep
     // until the scheduled time and then trigger the queue processor.
     // Non-blocking: a delivery failure does not fail the schedule operation.
-    const inngestEventKey = Deno.env.get("INNGEST_EVENT_KEY");
+    const inngestEventKey = Deno.env.get("INNGEST_API_KEY") ?? Deno.env.get("INNGEST_EVENT_KEY");
     if (inngestEventKey) {
       try {
-        await fetch(`https://inn.gs/e/${inngestEventKey}`, {
+        const inngestRes = await fetch(`https://inn.gs/e/${inngestEventKey}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -145,9 +145,15 @@ Deno.serve(async (req: Request) => {
             },
           }),
         });
+        if (!inngestRes.ok) {
+          const body = await inngestRes.text();
+          console.error(`Inngest event rejected (${inngestRes.status}): ${body}`);
+        }
       } catch (inngestErr) {
         console.error("Inngest event delivery failed (non-fatal):", inngestErr);
       }
+    } else {
+      console.warn("No INNGEST_API_KEY secret set — post/scheduled event not sent");
     }
 
     return new Response(

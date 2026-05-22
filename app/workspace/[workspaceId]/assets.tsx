@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { radius, spacing, typography } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
@@ -54,6 +54,7 @@ export default function AssetsScreen() {
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
   const [sheetVisible, setSheetVisible] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const s = styles(colors);
 
@@ -78,6 +79,13 @@ export default function AssetsScreen() {
     load();
   }, [load]);
 
+  // Reload when navigating back from generate-image modal
+  useFocusEffect(
+    useCallback(() => {
+      load(true);
+    }, [load]),
+  );
+
   const filtered =
     filter === "all" ? assets : assets.filter((a) => a.type === filter);
 
@@ -96,12 +104,13 @@ export default function AssetsScreen() {
   const handleDelete = useCallback(
     async (assetId: string) => {
       setDeleting(true);
+      setDeleteError(null);
       try {
         await deleteAsset(assetId);
         closeSheet();
         await load(true);
-      } catch {
-        // ignore
+      } catch (e) {
+        setDeleteError(e instanceof Error ? e.message : "Failed to delete asset.");
       } finally {
         setDeleting(false);
       }
@@ -245,6 +254,15 @@ export default function AssetsScreen() {
         />
       )}
 
+      {deleteError && (
+        <View style={[s.errorBanner, { backgroundColor: colors.danger + "22", borderColor: colors.danger + "55" }]}>
+          <MaterialIcons name="error-outline" size={14} color={colors.danger} />
+          <Text style={{ ...typography.caption, color: colors.danger, flex: 1 }}>{deleteError}</Text>
+          <Pressable onPress={() => setDeleteError(null)} accessibilityLabel="Dismiss error">
+            <MaterialIcons name="close" size={14} color={colors.danger} />
+          </Pressable>
+        </View>
+      )}
       <AssetDetailSheet
         asset={selectedAsset}
         publicUrl={selectedUrl}
@@ -320,6 +338,16 @@ function styles(colors: Record<string, string>) {
       alignItems: "center",
       justifyContent: "center",
       padding: spacing["3xl"],
+    },
+    errorBanner: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm,
+      marginHorizontal: spacing.xl,
+      marginTop: spacing.md,
+      padding: spacing.md,
+      borderRadius: radius.md,
+      borderWidth: 1,
     },
   });
 }

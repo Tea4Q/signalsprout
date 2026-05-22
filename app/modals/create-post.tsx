@@ -21,11 +21,11 @@ import { generateContent, GeneratedContent } from "@/services/content/contentGen
 import { generateImage, GeneratedImage } from "@/services/content/imageGenerationService";
 import { createPost, linkPostAsset } from "@/services/scheduling/postService";
 import { publishNow, schedulePost } from "@/services/scheduling/schedulerService";
-import {
-  uploadExternalImage,
+import { uploadExternalImage,
   setAsCharacterReference,
   getCharacterReference,
 } from "@/services/content/assetService";
+import { AssetPickerSheet } from "@/components/assets/AssetPickerSheet";
 import { AppButton } from "@/components/ui/AppButton";
 import { AppInput } from "@/components/ui/AppInput";
 
@@ -58,6 +58,7 @@ export default function CreatePostModal() {
   const [generating, setGenerating] = useState(false);
   const [generatingImage, setGeneratingImage] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [showLibraryPicker, setShowLibraryPicker] = useState(false);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -563,6 +564,17 @@ export default function CreatePostModal() {
           </View>
         )}
       </ScrollView>
+      {workspaceId && (
+        <AssetPickerSheet
+          visible={showLibraryPicker}
+          workspaceId={workspaceId}
+          onClose={() => setShowLibraryPicker(false)}
+          onSelect={(picked) => {
+            setImage(picked);
+            setShowLibraryPicker(false);
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 }

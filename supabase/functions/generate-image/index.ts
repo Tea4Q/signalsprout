@@ -15,8 +15,9 @@ interface GenerateImageRequest {
   workspace_id: string;
 }
 
-function dalleSize(platform: Platform): "1024x1024" | "1024x1792" {
-  return platform === "pinterest" ? "1024x1792" : "1024x1024";
+function imageSize(platform: Platform): "1024x1024" | "1024x1536" {
+  // gpt-image-1 portrait: 1024x1536 (Pinterest), square: 1024x1024 (Instagram)
+  return platform === "pinterest" ? "1024x1536" : "1024x1024";
 }
 
 Deno.serve(async (req: Request) => {
@@ -43,41 +44,42 @@ Deno.serve(async (req: Request) => {
     const openAiKey = Deno.env.get("OPENAI_API_KEY");
     if (!openAiKey) throw new Error("OPENAI_API_KEY not configured");
 
-    const size = dalleSize(platform);
+    const size = imageSize(platform);
     const startTime = Date.now();
 
-    const dalleResponse = await fetch("https://api.openai.com/v1/images/generations", {
+    const genResponse = await fetch("https://api.openai.com/v1/images/generations", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${openAiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "dall-e-3",
+        model: "gpt-image-1",
         prompt,
         n: 1,
         size,
+        quality: "medium",
+        output_format: "jpeg",
+        output_compression: 85,
       }),
     });
 
-    if (!dalleResponse.ok) {
-      const err = await dalleResponse.text();
-      throw new Error(`DALL·E error: ${err}`);
+    if (!genResponse.ok) {
+      const err = await genResponse.text();
+      throw new Error(`Image generation error: ${err}`);
     }
 
-    const dalleData = await dalleResponse.json();
-    const imageUrl: string = dalleData.data[0].url;
-    const revisedPrompt: string = dalleData.data[0].revised_prompt ?? prompt;
+    const genData = await genResponse.json();
+    const b64: string = genData.data[0].b64_json;
+    const revisedPrompt: string = genData.data[0].revised_prompt ?? prompt;
 
-    const imgRes = await fetch(imageUrl);
-    if (!imgRes.ok) throw new Error("Failed to download generated image");
-    const imageBytes = new Uint8Array(await imgRes.arrayBuffer());
-    const fileName = `${Date.now()}-${platform}.png`;
+    const imageBytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    const fileName = `${Date.now()}-${platform}.jpg`;
     const filePath = `assets/${workspace_id}/${brand_id}/${fileName}`;
 
     const { error: uploadError } = await supabase.storage
       .from("assets")
-      .upload(filePath, imageBytes, { contentType: "image/png", upsert: false });
+      .upload(filePath, imageBytes, { contentType: "image/jpeg", upsert: false });
 
     if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`);
 
@@ -95,14 +97,15 @@ Deno.serve(async (req: Request) => {
         prompt_used: revisedPrompt,
         width,
         height,
-        mime_type: "image/png",
+        mime_type: "image/jpeg",
       })
       .select()
       .single();
 
     if (assetError) throw new Error(`Asset insert failed: ${assetError.message}`);
 
-    const imageCost = size === "1024x1792" ? 0.08 : 0.04;
+    // gpt-image-1 pricing: ~$0.04 per image (1024x1024), ~$0.06 per image (1024x1536)
+    const imageCost = size === "1024x1536" ? 0.06 : 0.04;
 
     await supabase.from("cost_entries").insert({
       workspace_id,
@@ -111,9 +114,9 @@ Deno.serve(async (req: Request) => {
       entry_date: new Date().toISOString().split("T")[0],
       unit: "image",
       quantity: 1,
-      notes: `DALL�E 3 image generation � ${platform} ${size}`,
+      notes: `gpt-image-1 generation — ${platform} ${size}`,
       metadata: {
-        model: "dall-e-3",
+        model: "gpt-image-1",
         size,
         platform,
         asset_id: asset.id,

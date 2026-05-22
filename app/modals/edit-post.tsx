@@ -35,6 +35,7 @@ import {
 } from "@/services/scheduling/schedulerService";
 import { generateImage, GeneratedImage } from "@/services/content/imageGenerationService";
 import { uploadExternalImage } from "@/services/content/assetService";
+import { AssetPickerSheet } from "@/components/assets/AssetPickerSheet";
 import { supabase } from "@/lib/supabase";
 import type { Database } from "@/types/database";
 
@@ -91,6 +92,7 @@ export default function EditPostModal() {
   const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null);
   const [generatingImage, setGeneratingImage] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [showLibraryPicker, setShowLibraryPicker] = useState(false);
   const [imagePrompt, setImagePrompt] = useState("");
 
   const s = styles(colors);
@@ -537,6 +539,13 @@ export default function EditPostModal() {
                   />
                 </View>
               </View>
+              <View style={{ height: spacing.sm }} />
+              <AppButton
+                label="Use from Library"
+                onPress={() => setShowLibraryPicker(true)}
+                disabled={generatingImage || uploadingImage}
+                variant="secondary"
+              />
             </View>
 
             <View style={{ height: spacing.xl }} />
@@ -642,6 +651,17 @@ export default function EditPostModal() {
           </>
         )}
       </ScrollView>
+      {workspaceId && (
+        <AssetPickerSheet
+          visible={showLibraryPicker}
+          workspaceId={workspaceId}
+          onClose={() => setShowLibraryPicker(false)}
+          onSelect={(picked) => {
+            setImage(picked);
+            setShowLibraryPicker(false);
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 }

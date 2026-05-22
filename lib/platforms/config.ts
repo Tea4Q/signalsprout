@@ -102,14 +102,30 @@ export const PLATFORMS: Record<PlatformId, PlatformConfig> = {
     color: "#1877F2",
     icon: faFacebook,
     usesPkce: false,
-    buildAuthUrl: ({ clientId, redirectUri, state }) =>
-      `https://www.facebook.com/dialog/oauth?${buildQuery({
+    buildAuthUrl: ({ clientId, redirectUri, state }) => {
+      const configId = process.env.EXPO_PUBLIC_FACEBOOK_CONFIG_ID;
+      if (configId) {
+        // Facebook Login for Business — config_id pre-defines scopes and redirect URIs in
+        // the Meta Developer Portal, directing users to the business/pages flow instead of
+        // the personal account dialog.
+        return `https://www.facebook.com/dialog/oauth?${buildQuery({
+          config_id: configId,
+          client_id: clientId,
+          redirect_uri: redirectUri,
+          response_type: "code",
+          override_default_response_type: "true",
+          state,
+        })}`;
+      }
+      // Fallback: standard OAuth (requires redirect URI to be whitelisted in the Meta app)
+      return `https://www.facebook.com/dialog/oauth?${buildQuery({
         client_id: clientId,
         redirect_uri: redirectUri,
         scope: "pages_manage_posts,pages_read_engagement,pages_show_list",
         response_type: "code",
         state,
-      })}`,
+      })}`;
+    },
   },
 
   tiktok: {

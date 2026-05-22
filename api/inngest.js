@@ -5,7 +5,8 @@ const { Inngest } = require("inngest");
 const inngest = new Inngest({
   id: "signalsprout",
   signingKey: process.env.INNGEST_SIGNING_KEY,
-  eventKey: process.env.INNGEST_EVENT_KEY,
+  // Env var is INNGEST_API_KEY; fall back to INNGEST_EVENT_KEY for older configs
+  eventKey: process.env.INNGEST_API_KEY || process.env.INNGEST_EVENT_KEY,
 });
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -57,23 +58,18 @@ const publishScheduledPost = inngest.createFunction(
   },
 );
 
-const trackPublishedPost = inngest.createFunction(
-  {
-    id: "track-published-post",
-    name: "Track Published Post",
-    triggers: [{ event: "post/published" }],
-  },
-  async ({ event, step }) => {
-    const { post_id, platform, external_post_id, mode } = event.data;
-    // Placeholder for post-publish processing:
-    // analytics sync, notifications, credit deduction, etc.
-    return { post_id, platform, external_post_id, mode, received: true };
-  },
-);
-
-const serveOrigin =
-  process.env.INNGEST_SERVE_ORIGIN ||
-  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined);
+// INNGEST_BASE_URL is the full endpoint URL (e.g. https://signalsprout.vercel.app/api/inngest).
+// serve() only needs the origin; extract it so VERCEL_URL (which changes per deployment) is
+// used only as a last resort.
+function getServeOrigin() {
+  if (process.env.INNGEST_SERVE_ORIGIN) return process.env.INNGEST_SERVE_ORIGIN;
+  if (process.env.INNGEST_BASE_URL) {
+    try { return new URL(process.env.INNGEST_BASE_URL).origin; } catch {}
+  }
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return undefined;
+}
+const serveOrigin = getServeOrigin();
 
 const trackPublishedPost = inngest.createFunction(
   {

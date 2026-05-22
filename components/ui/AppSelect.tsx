@@ -24,6 +24,7 @@ interface AppSelectProps {
   onChange: (value: string) => void;
   placeholder?: string;
   error?: string;
+  disabled?: boolean;
 }
 
 export function AppSelect({
@@ -33,6 +34,7 @@ export function AppSelect({
   onChange,
   placeholder = "Select an option",
   error,
+  disabled = false,
 }: AppSelectProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -47,7 +49,7 @@ export function AppSelect({
       </Text>
 
       <Pressable
-        onPress={() => setOpen(true)}
+        onPress={() => { if (!disabled) setOpen(true); }}
         style={[
           {
             height: 48,
@@ -59,11 +61,13 @@ export function AppSelect({
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
+            opacity: disabled ? 0.5 : 1,
           },
           !!error && { borderColor: colors.danger },
         ]}
         accessibilityRole="button"
         accessibilityLabel={label}
+        accessibilityState={{ disabled }}
       >
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, flex: 1 }}>
           {selected?.icon}

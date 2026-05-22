@@ -107,13 +107,13 @@ export const PLATFORMS: Record<PlatformId, PlatformConfig> = {
       if (configId) {
         // Facebook Login for Business — config_id pre-defines scopes and redirect URIs in
         // the Meta Developer Portal, directing users to the business/pages flow instead of
-        // the personal account dialog.
+        // the personal account dialog. Do NOT include response_type or
+        // override_default_response_type here — the Business Login Config controls the
+        // response type, and overriding it can cause the auth code to be missing.
         return `https://www.facebook.com/dialog/oauth?${buildQuery({
           config_id: configId,
           client_id: clientId,
           redirect_uri: redirectUri,
-          response_type: "code",
-          override_default_response_type: "true",
           state,
         })}`;
       }

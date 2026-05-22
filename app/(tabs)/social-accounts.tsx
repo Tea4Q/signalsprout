@@ -203,36 +203,39 @@ export default function SocialAccountsScreen() {
           return;
         }
 
-        // Parse code + state out of the redirect URL
+        // Parse code / access_token + state from the redirect URL.
+        // Facebook Business Login may use implicit flow (access_token in hash).
         const url = new URL(result.url);
-        const returnedState = url.searchParams.get("state");
-        const code = url.searchParams.get("code");
-        const errorParam = url.searchParams.get("error");
+        const hashFragment = url.hash.replace(/^#/, "");
+        const hashParams = new URLSearchParams(hashFragment);
+        const returnedState = url.searchParams.get("state") ?? hashParams.get("state");
+        const code = url.searchParams.get("code") ?? hashParams.get("code");
+        const accessToken = hashParams.get("access_token");
+        const errorParam = url.searchParams.get("error") ?? hashParams.get("error");
 
         if (errorParam) {
           throw new Error(
-            url.searchParams.get("error_description") ?? errorParam,
+            url.searchParams.get("error_description") ?? hashParams.get("error_description") ?? errorParam,
           );
         }
-        if (returnedState !== state) {
+        // State check: required for code flow; skip for implicit flow where Facebook
+        // doesn't always return state in the hash.
+        if (code && returnedState !== state) {
           throw new Error("OAuth state mismatch — possible CSRF attack.");
         }
-        if (!code) {
+        if (!code && !accessToken) {
           throw new Error("No authorization code returned.");
         }
 
-        // Exchange code for tokens via Edge Function
+        // Exchange code (or direct access token) for stored credentials via Edge Function
         const { data: session } = await supabase.auth.getSession();
+        const exchangeBody = code
+          ? { platform: platformId, code, workspaceId, redirectUri, codeVerifier }
+          : { platform: platformId, accessToken, workspaceId };
         const { data, error } = await supabase.functions.invoke(
           "oauth-exchange",
           {
-            body: {
-              platform: platformId,
-              code,
-              workspaceId,
-              redirectUri,
-              codeVerifier,
-            },
+            body: exchangeBody,
             headers: {
               Authorization: `Bearer ${session.session?.access_token}`,
             },

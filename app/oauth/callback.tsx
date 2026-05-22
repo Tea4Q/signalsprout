@@ -28,22 +28,25 @@ export default function OAuthCallbackPage() {
         const search = win?.location?.search ?? "";
         const hash = win?.location?.hash ?? "";
         const params = new URLSearchParams(search);
-        // Facebook Business Login (config_id) occasionally returns code in the
-        // hash fragment — check both locations.
+        // Facebook Business Login (config_id) can return either:
+        //   • code in the query string  (code flow — preferred)
+        //   • access_token in the hash  (implicit flow — Business Login default)
+        // Check both locations for both values.
         const hashParams = new URLSearchParams(hash.replace(/^#/, ""));
         const code = params.get("code") ?? hashParams.get("code");
+        const accessToken = hashParams.get("access_token"); // implicit flow
         const state = params.get("state") ?? hashParams.get("state");
         const error = params.get("error") ?? hashParams.get("error");
         const errorDescription = params.get("error_description") ?? hashParams.get("error_description");
 
-        console.log("[oauth/callback] search:", search, "hash:", hash, "code:", !!code, "state:", !!state, "error:", error);
+        console.log("[oauth/callback] search:", search, "hash:", hash, "code:", !!code, "accessToken:", !!accessToken, "state:", !!state, "error:", error);
 
         if (error) {
           throw new Error(errorDescription ?? error);
         }
 
-        if (!code) {
-          const debugInfo = `No code returned. search="${search}" hash="${hash}"`;
+        if (!code && !accessToken) {
+          const debugInfo = `No code or token returned. search="${search}" hash="${hash}"`;
           console.error("[oauth/callback]", debugInfo);
           throw new Error("Facebook did not return an authorization code. Please try connecting again.");
         }
@@ -52,7 +55,9 @@ export default function OAuthCallbackPage() {
         const platformId = ss?.getItem("oauth_platform");
         const workspaceId = ss?.getItem("oauth_workspace");
 
-        if (!storedState || state !== storedState) {
+        // State is required for code flow. For implicit flow (access_token in hash),
+        // Facebook doesn't always include state — skip the check only in that case.
+        if (code && (!storedState || state !== storedState)) {
           throw new Error("OAuth state mismatch — possible CSRF attack.");
         }
         if (!platformId || !workspaceId) {
@@ -66,6 +71,11 @@ export default function OAuthCallbackPage() {
         const redirectUri = Linking.createURL("oauth/callback");
         const { data: sessionData } = await supabase.auth.getSession();
 
+        // Build the exchange payload: code flow or implicit (access_token) flow.
+        const exchangePayload = code
+          ? { platform: platformId, code, workspaceId, redirectUri }
+          : { platform: platformId, accessToken, workspaceId };
+
         // Use raw fetch so we can read the actual error body when the function
         // returns a non-2xx — supabase.functions.invoke swallows the body.
         const fnRes = await fetch(
@@ -77,7 +87,7 @@ export default function OAuthCallbackPage() {
               "Authorization": `Bearer ${sessionData.session?.access_token}`,
               "apikey": env.supabaseAnonKey,
             },
-            body: JSON.stringify({ platform: platformId, code, workspaceId, redirectUri }),
+            body: JSON.stringify(exchangePayload),
           },
         );
         const fnJson = await fnRes.json().catch(() => ({})) as Record<string, unknown>;

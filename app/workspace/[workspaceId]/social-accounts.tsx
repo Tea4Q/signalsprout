@@ -183,23 +183,29 @@ export default function SocialAccountsScreen() {
         if (result.type !== "success") return;
 
         const url = new URL(result.url);
-        const returnedState = url.searchParams.get("state");
-        const code = url.searchParams.get("code");
-        const errorParam = url.searchParams.get("error");
+        const hashFragment = url.hash.replace(/^#/, "");
+        const hashParams = new URLSearchParams(hashFragment);
+        const returnedState = url.searchParams.get("state") ?? hashParams.get("state");
+        const code = url.searchParams.get("code") ?? hashParams.get("code");
+        const accessToken = hashParams.get("access_token");
+        const errorParam = url.searchParams.get("error") ?? hashParams.get("error");
 
         if (errorParam) {
-          throw new Error(url.searchParams.get("error_description") ?? errorParam);
+          throw new Error(url.searchParams.get("error_description") ?? hashParams.get("error_description") ?? errorParam);
         }
-        if (returnedState !== state) {
+        if (code && returnedState !== state) {
           throw new Error("OAuth state mismatch — possible CSRF attack.");
         }
-        if (!code) {
+        if (!code && !accessToken) {
           throw new Error("No authorization code returned.");
         }
 
         const { data: session } = await supabase.auth.getSession();
+        const exchangeBody = code
+          ? { platform: platformId, code, workspaceId, redirectUri, codeVerifier }
+          : { platform: platformId, accessToken, workspaceId };
         const { data, error } = await supabase.functions.invoke("oauth-exchange", {
-          body: { platform: platformId, code, workspaceId, redirectUri, codeVerifier },
+          body: exchangeBody,
           headers: { Authorization: `Bearer ${session.session?.access_token}` },
         });
 

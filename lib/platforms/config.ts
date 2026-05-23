@@ -105,16 +105,17 @@ export const PLATFORMS: Record<PlatformId, PlatformConfig> = {
     buildAuthUrl: ({ clientId, redirectUri, state }) => {
       const configId = process.env.EXPO_PUBLIC_FACEBOOK_CONFIG_ID;
       if (configId) {
-        // Facebook Login for Business — config_id pre-defines scopes and redirect URIs in
-        // the Meta Developer Portal, directing users to the business/pages flow instead of
-        // the personal account dialog. Do NOT include response_type or
-        // override_default_response_type here — the Business Login Config controls the
-        // response type, and overriding it can cause the auth code to be missing.
+        // Facebook Login for Business — config_id pre-defines scopes in the Meta Developer
+        // Portal. We must explicitly set response_type=code and override_default_response_type=true
+        // because the Business Login Config may default to the implicit (token) flow, which
+        // Facebook no longer supports for confidential/server-side clients.
         return `https://www.facebook.com/dialog/oauth?${buildQuery({
           config_id: configId,
           client_id: clientId,
           redirect_uri: redirectUri,
           state,
+          response_type: "code",
+          override_default_response_type: "true",
         })}`;
       }
       // Fallback: standard OAuth (requires redirect URI to be whitelisted in the Meta app)

@@ -1,7 +1,26 @@
+/**
+ * publish-instagram — Processes queued Instagram publish jobs.
+ *
+ * Supports two media types:
+ *   image  → standard feed post (IMAGE container)
+ *   video  → Instagram Reels    (REELS container)
+ *
+ * Reels flow:
+ *   1. POST /{ig-user-id}/media  (media_type=REELS, video_url=signed-url)
+ *   2. Poll GET /{container-id}?fields=status_code every 5 s until FINISHED
+ *   3. POST /{ig-user-id}/media_publish
+ */
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const MAX_ATTEMPTS = 3;
+const IG_BASE = "https://graph.facebook.com/v21.0";
+/** Polls container status up to this many times (5 s each → 2 min max). */
+const MAX_CONTAINER_POLLS = 24;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 Deno.serve(async (_req: Request) => {
   const serviceClient = createClient(
@@ -25,8 +44,9 @@ Deno.serve(async (_req: Request) => {
         caption,
         hashtags,
         hook,
+        media_type,
         social_account_id,
-        post_assets ( asset_id, sort_order, assets ( file_path ) )
+        post_assets ( asset_id, sort_order, assets ( file_path, mime_type ) )
       )
     `,
     )
@@ -60,36 +80,30 @@ Deno.serve(async (_req: Request) => {
 
       const { data: account } = await serviceClient
         .from("social_accounts")
-        .select("external_account_id, account_identifier")
+        .select("external_account_id, account_identifier, access_token")
         .eq("id", socialAccountId)
         .single();
 
       if (!account) throw new Error("Social account not found");
+      if (!account.access_token) throw new Error("Instagram access token missing on social account");
 
-      // Retrieve access token from credential_vault
-      const { data: vault } = await serviceClient
-        .from("credential_vault")
-        .select("encrypted_value")
-        .eq("workspace_id", post.workspace_id as string)
-        .eq("service", "instagram")
-        .eq("name", "access_token")
-        .maybeSingle();
-
-      if (!vault) throw new Error("Instagram atoken not found in vault");[]
-
-      const accessToken = vault.encrypted_value; // stored as plaintext token in this implementation
+      const accessToken = account.access_token;
       const igUserId = account.external_account_id;
       if (!igUserId)
         throw new Error("Instagram user ID not configured on social account");
 
-      // Get primary image URL (first asset by sort_order)
+      // Get primary asset (first by sort_order)
       const postAssets =
         (post.post_assets as Array<{
           sort_order: number;
-          assets: { file_path: string } | null;
+          assets: { file_path: string; mime_type: string | null } | null;
         }> | null) ?? [];
       postAssets.sort((a, b) => a.sort_order - b.sort_order);
       const primaryAsset = postAssets[0]?.assets;
+
+      if (!primaryAsset) {
+        throw new Error("Instagram posts require at least one media asset");
+      }
 
       // Build caption with hashtags
       const hashtags = (post.hashtags as string[] | null) ?? [];
@@ -97,27 +111,33 @@ Deno.serve(async (_req: Request) => {
         .filter(Boolean)
         .join("\n\n");
 
-      // ── Step 1: Create media container ──
+      const { data: urlData } = await serviceClient.storage
+        .from("assets")
+        .createSignedUrl(primaryAsset.file_path, 3600);
+      if (!urlData?.signedUrl) {
+        throw new Error("Failed to generate signed URL for media asset");
+      }
+      const signedUrl = urlData.signedUrl;
+
+      const isVideo = (post.media_type as string) === "video";
+
+      // ── Step 1: Create media container ──────────────────────────────────
       const containerParams = new URLSearchParams({
         caption: captionText,
         access_token: accessToken,
       });
 
-      if (primaryAsset) {
-        const { data: urlData } = await serviceClient.storage
-          .from("assets")
-          .createSignedUrl(primaryAsset.file_path, 3600);
-        if (urlData?.signedUrl) {
-          containerParams.set("image_url", urlData.signedUrl);
-          containerParams.set("media_type", "IMAGE");
-        }
+      if (isVideo) {
+        containerParams.set("media_type", "REELS");
+        containerParams.set("video_url", signedUrl);
+        containerParams.set("share_to_feed", "true");
       } else {
-        // Reels/text-only not supported without image — fail gracefully
-        throw new Error("Instagram posts require an image");
+        containerParams.set("media_type", "IMAGE");
+        containerParams.set("image_url", signedUrl);
       }
 
       const containerRes = await fetch(
-        `https://graph.instagram.com/v19.0/${igUserId}/media`,
+        `${IG_BASE}/${igUserId}/media`,
         {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -131,15 +151,44 @@ Deno.serve(async (_req: Request) => {
             "Failed to create Instagram media container",
         );
       }
+      const containerId = containerData.id as string;
 
-      // ── Step 2: Publish container ──
+      // ── Step 1b: For Reels, poll until container is FINISHED ─────────────
+      if (isVideo) {
+        let containerReady = false;
+        for (let i = 0; i < MAX_CONTAINER_POLLS; i++) {
+          await sleep(5_000);
+          const statusRes = await fetch(
+            `${IG_BASE}/${containerId}?fields=status_code&access_token=${encodeURIComponent(accessToken)}`,
+          );
+          const statusData = await statusRes.json();
+          const code = statusData?.status_code as string | undefined;
+          if (code === "FINISHED") {
+            containerReady = true;
+            break;
+          }
+          if (code === "ERROR") {
+            throw new Error(
+              `Instagram Reels container processing failed: ${statusData?.status ?? "unknown error"}`,
+            );
+          }
+          // IN_PROGRESS / PUBLISHED — keep polling
+        }
+        if (!containerReady) {
+          throw new Error(
+            "Instagram Reels container did not finish processing within 2 minutes",
+          );
+        }
+      }
+
+      // ── Step 2: Publish container ────────────────────────────────────────
       const publishRes = await fetch(
-        `https://graph.instagram.com/v19.0/${igUserId}/media_publish`,
+        `${IG_BASE}/${igUserId}/media_publish`,
         {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: new URLSearchParams({
-            creation_id: containerData.id,
+            creation_id: containerId,
             access_token: accessToken,
           }).toString(),
         },
@@ -173,6 +222,7 @@ Deno.serve(async (_req: Request) => {
           entity_id: post.id as string,
           metadata: {
             platform: "instagram",
+            media_type: post.media_type as string,
             external_post_id: publishData.id,
             publish_job_id: job.id,
           },

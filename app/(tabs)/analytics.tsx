@@ -8,6 +8,7 @@ import { AppTabs, type TabItem } from "@/components/ui/AppTabs";
 import { radius, spacing, typography } from "@/constants/theme";
 import { useWorkspace } from "@/context/workspace-context";
 import { useTheme } from "@/hooks/use-theme";
+import { formatUSD } from "@/lib/currency";
 import { syncMetrics } from "@/services/analytics/analyticsIngestService";
 import {
   dismissRecommendation,
@@ -25,6 +26,12 @@ import {
   type PlatformPerformanceRow,
   type PostPerformanceRow,
 } from "@/services/analytics/reportingService";
+import {
+  getCostPerAsset,
+  getCostPerPost,
+  type CostPerAssetResult,
+  type CostPerPostResult,
+} from "@/services/finance/roiService";
 import type { Database } from "@/types/database";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -59,24 +66,30 @@ export default function AnalyticsScreen() {
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [generatingRecs, setGeneratingRecs] = useState(false);
+  const [costPerPost, setCostPerPost] = useState<CostPerPostResult | null>(null);
+  const [costPerAsset, setCostPerAsset] = useState<CostPerAssetResult | null>(null);
 
   const loadData = useCallback(
     async (p: MetricPeriod) => {
       if (!workspaceId) return;
       setLoading(true);
       try {
-        const [sum, posts, brands, platforms, recs] = await Promise.all([
+        const [sum, posts, brands, platforms, recs, cpp, cpa] = await Promise.all([
           getPerformanceSummary(workspaceId, p),
           getTopPosts(workspaceId, p, sortKey),
           getPerformanceByBrand(workspaceId, p),
           getPerformanceByPlatform(workspaceId, p),
           getRecommendations(workspaceId, p),
+          getCostPerPost(workspaceId, p),
+          getCostPerAsset(workspaceId, p),
         ]);
         setSummary(sum);
         setTopPosts(posts);
         setByBrand(brands);
         setByPlatform(platforms);
         setRecommendations(recs);
+        setCostPerPost(cpp);
+        setCostPerAsset(cpa);
       } catch {
         // data unavailable — show empty state
       } finally {
@@ -228,6 +241,24 @@ export default function AnalyticsScreen() {
             <MetricCard
               label="Avg Eng Rate"
               value={`${((summary?.avgEngagementRate ?? 0) * 100).toFixed(2)}%`}
+              style={{ minWidth: "45%" }}
+            />
+            <MetricCard
+              label="Cost / Post"
+              value={
+                costPerPost?.costPerPost != null
+                  ? formatUSD(costPerPost.costPerPost)
+                  : "—"
+              }
+              style={{ minWidth: "45%" }}
+            />
+            <MetricCard
+              label="Cost / Asset"
+              value={
+                costPerAsset?.costPerAsset != null
+                  ? formatUSD(costPerAsset.costPerAsset)
+                  : "—"
+              }
               style={{ minWidth: "45%" }}
             />
           </View>

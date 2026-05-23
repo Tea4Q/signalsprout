@@ -1,10 +1,11 @@
 import { Tabs } from "expo-router";
 import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Platform, Pressable, Text, View } from "react-native";
 
 import { HapticTab } from "@/components/haptic-tab";
 import { AppModal } from "@/components/ui/AppModal";
 import { IconSymbol } from "@/components/ui/icon-symbol";
+import { WebSidebar } from "@/components/ui/WebSidebar";
 import { spacing, typography } from "@/constants/theme";
 import {
   useWorkspace,
@@ -102,9 +103,14 @@ function WorkspaceSwitcher() {
 
 export default function TabLayout() {
   const { colors } = useTheme();
+  const isWeb = Platform.OS === "web";
 
   return (
-    <Tabs
+    <View style={{ flex: 1, flexDirection: isWeb ? "row" : "column" }}>
+      {isWeb && <WebSidebar />}
+      <View style={{ flex: 1 }}>
+      <Tabs
+        tabBar={isWeb ? () => null : undefined}
         screenOptions={{
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: colors.textSecondary,
@@ -116,7 +122,7 @@ export default function TabLayout() {
           tabBarLabelStyle: {
             ...typography.micro,
           },
-          headerShown: true,
+          headerShown: !isWeb,
           headerTitle: () => <WorkspaceSwitcher />,
           headerStyle: { backgroundColor: colors.surface },
           headerShadowVisible: false,
@@ -193,5 +199,7 @@ export default function TabLayout() {
         <Tabs.Screen name="index" options={{ href: null }} />
         <Tabs.Screen name="explore" options={{ href: null }} />
       </Tabs>
+      </View>
+    </View>
   );
 }

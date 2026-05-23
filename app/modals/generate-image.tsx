@@ -1,6 +1,5 @@
 import React, { useCallback, useState } from "react";
 import {
-  ActivityIndicator,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -82,7 +81,7 @@ export default function GenerateImageModal() {
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={s.scrollContent}
-        keyboardShouldPersistTaps="handled"
+        keyboardShouldPersistTaps="always"
       >
         {!!error && (
           <View style={s.errorBanner}>
@@ -95,6 +94,7 @@ export default function GenerateImageModal() {
           value={platform}
           options={PLATFORM_OPTIONS}
           onChange={(v) => setPlatform(v as "instagram" | "pinterest")}
+          disabled={loading}
         />
 
         <View style={{ height: spacing.lg }} />
@@ -105,7 +105,19 @@ export default function GenerateImageModal() {
           onChangeText={setPrompt}
           placeholder="Describe the image you want to generate…"
           numberOfLines={5}
+          editable={!loading}
         />
+
+        <View style={{ height: spacing.md }} />
+
+        <View style={s.sizeNotice}>
+          <Text style={{ ...typography.caption, color: colors.textSecondary }}>
+            📐{"  "}
+            <Text style={{ fontWeight: "600" }}>Output sizes: </Text>
+            Instagram 1024 × 1024 px · Pinterest 1024 × 1536 px
+            {"  "}· JPEG · ~200–400 KB
+          </Text>
+        </View>
 
         <View style={{ height: spacing.xl }} />
 
@@ -141,7 +153,7 @@ export default function GenerateImageModal() {
         {image?.revised_prompt && (
           <View style={{ marginTop: spacing.lg, gap: spacing.xs }}>
             <Text style={{ ...typography.caption, color: colors.textSecondary }}>
-              DALL·E Revised Prompt
+              Revised Prompt
             </Text>
             <View style={s.infoBox}>
               <Text style={{ ...typography.caption, color: colors.textMuted, fontStyle: "italic" }}>
@@ -155,8 +167,7 @@ export default function GenerateImageModal() {
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function styles(colors: any) {
+function styles(colors: ReturnType<typeof useTheme>["colors"]) {
   return StyleSheet.create({
     safeArea: {
       flex: 1,
@@ -185,6 +196,14 @@ function styles(colors: any) {
       backgroundColor: colors.surfaceAlt,
       borderRadius: radius.md,
       padding: spacing.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    sizeNotice: {
+      backgroundColor: colors.surfaceAlt,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
       borderWidth: 1,
       borderColor: colors.border,
     },

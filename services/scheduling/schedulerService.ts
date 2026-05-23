@@ -19,7 +19,7 @@ export async function reschedulePost(
 }
 
 export async function cancelSchedule(postId: string): Promise<void> {
-  // Revert post to approved status and remove queued publish_jobs
+  // Revert post to approved status and remove all publish_jobs for this post
   const { error: postError } = await supabase
     .from("posts")
     .update({ status: "approved", scheduled_for: null })
@@ -30,7 +30,7 @@ export async function cancelSchedule(postId: string): Promise<void> {
     .from("publish_jobs")
     .delete()
     .eq("post_id", postId)
-    .eq("status", "queued");
+    .in("status", ["queued", "failed"]);
   if (jobError) throw jobError;
 
   // Cancel the sleeping Inngest function for this post (non-blocking — ignore errors)
@@ -45,6 +45,15 @@ export async function publishNow(postId: string): Promise<void> {
   const { data, error } = await supabase.functions.invoke("publish-now", {
     body: { post_id: postId },
   });
-  if (error) throw error;
+  if (error) {
+    // Try to extract the real error message from the edge function response body
+    try {
+      const body = await (error as unknown as { context?: { json?: () => Promise<{ error?: string }> } }).context?.json?.();
+      if (body?.error) throw new Error(body.error);
+    } catch (inner) {
+      if (inner instanceof Error && inner !== error) throw inner;
+    }
+    throw error;
+  }
   if (data?.error) throw new Error(data.error);
 }

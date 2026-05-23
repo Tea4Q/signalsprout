@@ -22,27 +22,40 @@ export async function getAssets(
   return data ?? [];
 }
 
+export type AssetWithUsage = AssetRow & { postCount: number };
+
+export async function getAssetsWithUsage(
+  workspaceId: string,
+): Promise<AssetWithUsage[]> {
+  const { data, error } = await supabase
+    .from("assets")
+    .select("*, post_assets(id)")
+    .eq("workspace_id", workspaceId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return ((data ?? []) as (AssetRow & { post_assets: { id: string }[] })[]).map(
+    (row) => ({ ...row, postCount: row.post_assets?.length ?? 0 }),
+  );
+}
+
 export async function deleteAsset(assetId: string): Promise<void> {
-  const { data: asset, error: fetchError } = await supabase
-    .from("assets")
-    .select("file_path")
-    .eq("id", assetId)
-    .single();
-
-  if (fetchError) throw fetchError;
-
-  const { error: storageError } = await supabase.storage
-    .from("assets")
-    .remove([asset.file_path]);
-
-  if (storageError) throw storageError;
-
-  const { error: dbError } = await supabase
-    .from("assets")
-    .delete()
-    .eq("id", assetId);
-
-  if (dbError) throw dbError;
+  // Deletion is routed through an edge function so the service role can
+  // remove the storage object (uploaded via service role, unreachable by
+  // client-side RLS) while still enforcing workspace membership via RLS.
+  const { error } = await supabase.functions.invoke("delete-asset", {
+    body: { asset_id: assetId },
+  });
+  if (error) {
+    let message = error.message;
+    try {
+      const ctx = (error as { context?: unknown }).context;
+      if (ctx && typeof (ctx as Response).json === "function") {
+        const body = await (ctx as Response).json() as { error?: string };
+        if (body?.error) message = body.error;
+      }
+    } catch { /* ignore — use original message */ }
+    throw new Error(message);
+  }
 }
 
 export function getAssetPublicUrl(filePath: string): string {
@@ -113,6 +126,78 @@ export async function uploadExternalImage(
     width: picked.width ?? 0,
     height: picked.height ?? 0,
     revised_prompt: "",
+  };
+}
+
+/**
+ * Opens the device video library, uploads the selected video to Supabase
+ * storage, records it in the assets table with type "uploaded_video", and
+ * returns a GeneratedImage-compatible object so it slots into the same
+ * post-creation flow.
+ *
+ * Supports Instagram Reels and TikTok video posts.
+ */
+export async function uploadVideo(
+  workspaceId: string,
+  brandId: string,
+): Promise<GeneratedImage & { fileName: string; durationMs: number | null }> {
+  const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (status !== "granted") {
+    throw new Error("Permission to access photo library was denied.");
+  }
+
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: "videos",
+    allowsEditing: false,
+    quality: 1,
+    videoMaxDuration: 600, // 10 min safety cap; platform limits enforced server-side
+  });
+
+  if (result.canceled || !result.assets[0]) {
+    throw new Error("No video selected.");
+  }
+
+  const picked = result.assets[0];
+  const uri = picked.uri;
+  const ext = (uri.split(".").pop() ?? "mp4").toLowerCase();
+  const mime = picked.mimeType ?? `video/${ext === "mov" ? "quicktime" : ext}`;
+  const fileName = uri.split("/").pop() ?? `video.${ext}`;
+
+  const response = await fetch(uri);
+  const blob = await response.blob();
+
+  const filePath = `${workspaceId}/${brandId}/${Date.now()}_video.${ext}`;
+  const { error: uploadError } = await supabase.storage
+    .from("assets")
+    .upload(filePath, blob, { contentType: mime, upsert: false });
+  if (uploadError) throw uploadError;
+
+  const { data: row, error: dbError } = await supabase
+    .from("assets")
+    .insert({
+      workspace_id: workspaceId,
+      brand_id: brandId,
+      file_path: filePath,
+      type: "uploaded_video" as Database["public"]["Enums"]["asset_type"],
+      mime_type: mime,
+      width: picked.width ?? null,
+      height: picked.height ?? null,
+    })
+    .select()
+    .single();
+  if (dbError) throw dbError;
+
+  const { data: urlData } = supabase.storage.from("assets").getPublicUrl(filePath);
+
+  return {
+    asset_id: row.id,
+    file_path: filePath,
+    public_url: urlData.publicUrl,
+    width: picked.width ?? 0,
+    height: picked.height ?? 0,
+    revised_prompt: "",
+    fileName,
+    durationMs: picked.duration ?? null,
   };
 }
 

@@ -12,6 +12,7 @@ export const publishScheduledPost = inngest.createFunction(
   {
     id: "publish-scheduled-post",
     name: "Publish Scheduled Post",
+    triggers: [{ event: "post/scheduled" }],
     cancelOn: [
       {
         event: "post/unscheduled",
@@ -20,8 +21,7 @@ export const publishScheduledPost = inngest.createFunction(
     ],
     retries: 3,
   },
-  { event: "post/scheduled" },
-  async ({ event, step }) => {
+  async ({ event, step }: { event: any; step: any }) => {
     const { post_id, scheduled_for, platform } = event.data;
 
     // Sleep until the exact scheduled time
@@ -29,8 +29,12 @@ export const publishScheduledPost = inngest.createFunction(
 
     // Trigger the appropriate platform publisher
     const result = await step.run("trigger-platform-publisher", async () => {
-      const functionName =
-        platform === "pinterest" ? "publish-pinterest" : "publish-instagram";
+      const PLATFORM_FUNCTION: Record<string, string> = {
+        pinterest: "publish-pinterest",
+        facebook: "publish-facebook",
+        tiktok: "publish-tiktok",
+      };
+      const functionName = PLATFORM_FUNCTION[platform] ?? "publish-instagram";
 
       const res = await fetch(
         `${SUPABASE_URL}/functions/v1/${functionName}`,

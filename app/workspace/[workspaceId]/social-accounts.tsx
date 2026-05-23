@@ -1,4 +1,5 @@
 import { SocialAccountCard } from "@/components/social/SocialAccountCard";
+import { FacebookSetupModal } from "@/components/social/FacebookSetupModal";
 import { InstagramSetupModal } from "@/components/social/InstagramSetupModal";
 import { spacing, typography } from "@/constants/theme";
 import { useToast } from "@/context/toast-context";
@@ -68,6 +69,7 @@ export default function SocialAccountsScreen() {
   const [connecting, setConnecting] = useState<PlatformId | null>(null);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [instagramSetupVisible, setInstagramSetupVisible] = useState(false);
+  const [facebookSetupVisible, setFacebookSetupVisible] = useState(false);
   const connectingRef = useRef(false);
   // Cached oauth result read from sessionStorage on mount (before workspaceId is ready)
   const pendingOauthToast = useRef<{ type: string; platform?: string; message?: string } | null>(null);
@@ -134,7 +136,8 @@ export default function SocialAccountsScreen() {
       const CLIENT_IDS: Record<string, string | undefined> = {
         instagram: process.env.EXPO_PUBLIC_INSTAGRAM_CLIENT_ID,
         pinterest: process.env.EXPO_PUBLIC_PINTEREST_CLIENT_ID,
-        facebook: process.env.EXPO_PUBLIC_FACEBOOK_CLIENT_ID,
+        // Facebook and Instagram share the same Meta app — fall back to Instagram client ID
+        facebook: process.env.EXPO_PUBLIC_FACEBOOK_CLIENT_ID ?? process.env.EXPO_PUBLIC_INSTAGRAM_CLIENT_ID,
         tiktok: process.env.EXPO_PUBLIC_TIKTOK_CLIENT_ID,
         x: process.env.EXPO_PUBLIC_X_CLIENT_ID,
         linkedin: process.env.EXPO_PUBLIC_LINKEDIN_CLIENT_ID,
@@ -180,23 +183,29 @@ export default function SocialAccountsScreen() {
         if (result.type !== "success") return;
 
         const url = new URL(result.url);
-        const returnedState = url.searchParams.get("state");
-        const code = url.searchParams.get("code");
-        const errorParam = url.searchParams.get("error");
+        const hashFragment = url.hash.replace(/^#/, "");
+        const hashParams = new URLSearchParams(hashFragment);
+        const returnedState = url.searchParams.get("state") ?? hashParams.get("state");
+        const code = url.searchParams.get("code") ?? hashParams.get("code");
+        const accessToken = hashParams.get("access_token");
+        const errorParam = url.searchParams.get("error") ?? hashParams.get("error");
 
         if (errorParam) {
-          throw new Error(url.searchParams.get("error_description") ?? errorParam);
+          throw new Error(url.searchParams.get("error_description") ?? hashParams.get("error_description") ?? errorParam);
         }
-        if (returnedState !== state) {
+        if (code && returnedState !== state) {
           throw new Error("OAuth state mismatch — possible CSRF attack.");
         }
-        if (!code) {
+        if (!code && !accessToken) {
           throw new Error("No authorization code returned.");
         }
 
         const { data: session } = await supabase.auth.getSession();
+        const exchangeBody = code
+          ? { platform: platformId, code, workspaceId, redirectUri, codeVerifier }
+          : { platform: platformId, accessToken, workspaceId };
         const { data, error } = await supabase.functions.invoke("oauth-exchange", {
-          body: { platform: platformId, code, workspaceId, redirectUri, codeVerifier },
+          body: exchangeBody,
           headers: { Authorization: `Bearer ${session.session?.access_token}` },
         });
 
@@ -223,6 +232,10 @@ export default function SocialAccountsScreen() {
     async (platformId: PlatformId) => {
       if (platformId === "instagram") {
         setInstagramSetupVisible(true);
+        return;
+      }
+      if (platformId === "facebook") {
+        setFacebookSetupVisible(true);
         return;
       }
       await doOAuthConnect(platformId);
@@ -323,6 +336,14 @@ export default function SocialAccountsScreen() {
           // window.location.href is synchronous within the same event loop tick.
           setInstagramSetupVisible(false);
           setTimeout(() => doOAuthConnect("instagram"), 0);
+        }}
+      />
+      <FacebookSetupModal
+        visible={facebookSetupVisible}
+        onClose={() => setFacebookSetupVisible(false)}
+        onContinue={() => {
+          setFacebookSetupVisible(false);
+          setTimeout(() => doOAuthConnect("facebook"), 0);
         }}
       />
     </SafeAreaView>

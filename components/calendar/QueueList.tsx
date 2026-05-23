@@ -60,8 +60,14 @@ export function QueueList({
 
   const renderItem = ({ item }: { item: QueueItem }) => {
     const post = item.post;
-    const status = (post?.status ?? "draft") as PostStatus;
-    const badge = STATUS_BADGE[status];
+    // If the job has an error but the post hasn't hit max retries yet,
+    // still show the error state so the user knows something went wrong.
+    const rawStatus = (post?.status ?? "draft") as PostStatus;
+    const effectiveStatus: PostStatus =
+      item.last_error && rawStatus === "scheduled" ? "failed" : rawStatus;
+    const status = effectiveStatus;
+    const badge = STATUS_BADGE[status] ?? STATUS_BADGE["draft"];
+    const isFailed = status === "failed";
     const platform = post?.platform ?? "instagram";
     const scheduledTime = item.run_at
       ? new Date(item.run_at).toLocaleString(undefined, {
@@ -77,8 +83,6 @@ export function QueueList({
         ? post.caption.slice(0, 60) + "…"
         : post.caption
       : (post?.hook ?? "No caption");
-
-    const isFailed = status === "failed";
 
     return (
       <Pressable

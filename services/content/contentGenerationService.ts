@@ -12,7 +12,7 @@ export interface GeneratedContent {
 export interface GenerateContentParams {
   brand_id: string;
   workspace_id: string;
-  platform: "instagram" | "pinterest";
+  platform: "instagram" | "pinterest" | "facebook" | "tiktok";
   content_type: string;
   tone: string;
   cta?: string;

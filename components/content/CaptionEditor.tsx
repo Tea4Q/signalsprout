@@ -3,15 +3,17 @@ import { Text, TextInput, View } from "react-native";
 import { radius, spacing, typography } from "../../constants/theme";
 import { useTheme } from "../../hooks/use-theme";
 
-const CHAR_LIMITS: Record<"instagram" | "pinterest", number> = {
+const CHAR_LIMITS: Record<"instagram" | "pinterest" | "facebook" | "tiktok", number> = {
   instagram: 2200,
+  facebook: 63206,
+  tiktok: 2200,
   pinterest: 500,
 };
 
 interface CaptionEditorProps {
   value: string;
   onChange: (text: string) => void;
-  platform: "instagram" | "pinterest";
+  platform: "instagram" | "pinterest" | "facebook" | "tiktok";
   label?: string;
 }
 

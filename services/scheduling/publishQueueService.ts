@@ -82,6 +82,35 @@ export async function retryFailedPost(postId: string): Promise<void> {
   if (jobError) throw jobError;
 }
 
+export async function publishNow(postId: string): Promise<void> {
+  const runAt = new Date().toISOString();
+  const { error: postError } = await supabase
+    .from("posts")
+    .update({ status: "scheduled", scheduled_for: runAt, failure_reason: null })
+    .eq("id", postId);
+  if (postError) throw postError;
+  const { error: jobError } = await supabase
+    .from("publish_jobs")
+    .upsert(
+      { post_id: postId, run_at: runAt, status: "queued", attempt_count: 0, last_error: null },
+      { onConflict: "post_id" },
+    );
+  if (jobError) throw jobError;
+}
+
+export async function reschedulePost(postId: string, newScheduledFor: string): Promise<void> {
+  const { error: postError } = await supabase
+    .from("posts")
+    .update({ scheduled_for: newScheduledFor })
+    .eq("id", postId);
+  if (postError) throw postError;
+  // Also update the publish job if one exists
+  await supabase
+    .from("publish_jobs")
+    .update({ run_at: newScheduledFor })
+    .eq("post_id", postId);
+}
+
 export async function getFailedPosts(workspaceId: string): Promise<PostRow[]> {
   const { data, error } = await supabase
     .from("posts")
@@ -91,4 +120,23 @@ export async function getFailedPosts(workspaceId: string): Promise<PostRow[]> {
     .order("updated_at", { ascending: false });
   if (error) throw error;
   return data ?? [];
+}
+
+export type AuditLogEntry = {
+  id: string;
+  action: string;
+  created_at: string;
+  metadata: Record<string, unknown>;
+};
+
+export async function getPostAuditLog(postId: string): Promise<AuditLogEntry[]> {
+  const { data, error } = await supabase
+    .from("audit_logs")
+    .select("id, action, created_at, metadata")
+    .eq("entity_id", postId)
+    .in("action", ["post.publish_failed", "post.published"])
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (error) throw error;
+  return (data ?? []) as AuditLogEntry[];
 }

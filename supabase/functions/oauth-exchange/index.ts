@@ -113,6 +113,93 @@ async function exchangeInstagram(
   };
 }
 
+async function exchangeFacebook(params: {
+  code?: string;
+  redirectUri?: string;
+  accessToken?: string;
+}): Promise<TokenResult> {
+  // Facebook and Instagram share the same Meta app — fall back to Instagram credentials.
+  const clientId =
+    Deno.env.get("FACEBOOK_CLIENT_ID") ?? Deno.env.get("INSTAGRAM_CLIENT_ID");
+  const clientSecret =
+    Deno.env.get("FACEBOOK_CLIENT_SECRET") ?? Deno.env.get("INSTAGRAM_CLIENT_SECRET");
+  if (!clientId || !clientSecret) {
+    throw new Error("Missing Facebook OAuth credentials (FACEBOOK_CLIENT_ID / FACEBOOK_CLIENT_SECRET)");
+  }
+
+  let shortToken: string;
+
+  if (params.accessToken) {
+    // Implicit flow: Business Login returned access_token directly in the hash fragment.
+    // Use it as the short-lived token and proceed to the long-lived exchange.
+    shortToken = params.accessToken;
+  } else if (params.code && params.redirectUri) {
+    // Code flow: exchange authorization code for a short-lived user access token.
+    const tokenRes = await fetch("https://graph.facebook.com/v20.0/oauth/access_token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: params.redirectUri,
+        code: params.code,
+      }),
+    });
+    if (!tokenRes.ok) {
+      const err = await tokenRes.text();
+      throw new Error(`Facebook token exchange failed: ${err}`);
+    }
+    const { access_token } = await tokenRes.json();
+    shortToken = access_token;
+  } else {
+    throw new Error("Either code+redirectUri or accessToken is required for Facebook exchange");
+  }
+
+  // Exchange for long-lived User Access Token (~60 days)
+  const llRes = await fetch(
+    `https://graph.facebook.com/oauth/access_token?grant_type=fb_exchange_token` +
+      `&client_id=${encodeURIComponent(clientId)}` +
+      `&client_secret=${encodeURIComponent(clientSecret)}` +
+      `&fb_exchange_token=${encodeURIComponent(shortToken)}`,
+  );
+  if (!llRes.ok) {
+    throw new Error(`Facebook long-lived token exchange failed: ${await llRes.text()}`);
+  }
+  const { access_token: longToken } = await llRes.json();
+
+  // Get Facebook Pages managed by the user
+  const pagesRes = await fetch(
+    `https://graph.facebook.com/v20.0/me/accounts?access_token=${encodeURIComponent(longToken)}`,
+  );
+  if (!pagesRes.ok) {
+    throw new Error(`Failed to fetch Facebook Pages: ${await pagesRes.text()}`);
+  }
+  const pagesData = await pagesRes.json();
+  const pages: Array<{ id: string; name: string; access_token: string }> =
+    pagesData.data ?? [];
+
+  if (pages.length === 0) {
+    throw new Error(
+      "No Facebook Pages found. Please create a Facebook Page and grant admin access, " +
+        "then reconnect. Pages are required to publish content via Facebook.",
+    );
+  }
+
+  // Use the first page (the Meta Business Login dialog lets the user pick which page to share)
+  const page = pages[0];
+
+  return {
+    accessToken: longToken, // stored so publish-facebook can call /me/accounts at publish time
+    refreshToken: null,
+    expiresAt: null, // long-lived tokens don't carry an expiry in the exchange response
+    accountName: page.name,
+    accountHandle: page.id,
+    externalAccountId: page.id,
+    avatarUrl: null,
+    scopes: "pages_manage_posts,pages_read_engagement,pages_show_list",
+  };
+}
+
 async function exchangePinterest(
   code: string,
   redirectUri: string,
@@ -354,18 +441,28 @@ Deno.serve(async (req: Request) => {
   );
 
   try {
-    const { platform, code, workspaceId, redirectUri, codeVerifier } =
+    const { platform, code, accessToken, workspaceId, redirectUri, codeVerifier } =
       await req.json() as {
         platform: string;
-        code: string;
+        code?: string;
+        accessToken?: string;
         workspaceId: string;
-        redirectUri: string;
+        redirectUri?: string;
         codeVerifier?: string;
       };
 
-    if (!platform || !code || !workspaceId || !redirectUri) {
+    // For non-Facebook platforms the code+redirectUri pair is always required.
+    // Facebook also accepts a direct accessToken from the implicit flow.
+    const isFacebookImplicit = platform === "facebook" && !!accessToken;
+    if (!platform || !workspaceId) {
       return new Response(
-        JSON.stringify({ error: "Missing required fields: platform, code, workspaceId, redirectUri" }),
+        JSON.stringify({ error: "Missing required fields: platform, workspaceId" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+    if (!isFacebookImplicit && (!code || !redirectUri)) {
+      return new Response(
+        JSON.stringify({ error: "Missing required fields: code, redirectUri" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -385,14 +482,16 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // Exchange the authorization code for tokens
+    // Exchange the authorization code (or direct token) for stored credentials
     let result: TokenResult;
     if (platform === "instagram") {
-      result = await exchangeInstagram(code, redirectUri);
+      result = await exchangeInstagram(code!, redirectUri!);
+    } else if (platform === "facebook") {
+      result = await exchangeFacebook({ code, redirectUri, accessToken });
     } else if (platform === "pinterest") {
-      result = await exchangePinterest(code, redirectUri);
+      result = await exchangePinterest(code!, redirectUri!);
     } else {
-      result = await exchangeGeneric(platform, code, redirectUri, codeVerifier);
+      result = await exchangeGeneric(platform, code!, redirectUri!, codeVerifier);
     }
 
     // Upsert into social_accounts

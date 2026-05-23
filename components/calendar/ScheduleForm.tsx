@@ -220,7 +220,7 @@ export function ScheduleForm({
 
       {/* Social account selector */}
       <AppSelect
-        label={`${platform === "instagram" ? "Instagram" : "Pinterest"} Account`}
+        label={`${platform.charAt(0).toUpperCase() + platform.slice(1)} Account`}
         value={socialAccountId}
         options={accounts}
         onChange={onChangeSocialAccount}

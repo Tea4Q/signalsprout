@@ -5,6 +5,7 @@ import { useWorkspace } from "@/context/workspace-context";
 import { useTheme } from "@/hooks/use-theme";
 import { PLATFORM_LIST, type PlatformId } from "@/lib/platforms/config";
 import { supabase } from "@/lib/supabase";
+import { FacebookSetupModal } from "@/components/social/FacebookSetupModal";
 import { InstagramSetupModal } from "@/components/social/InstagramSetupModal";
 import {
   disconnectSocialAccount,
@@ -70,6 +71,7 @@ export default function SocialAccountsScreen() {
   const [connecting, setConnecting] = useState<PlatformId | null>(null);
   const [disconnecting, setDisconnecting] = useState<string | null>(null); // accountId
   const [instagramSetupVisible, setInstagramSetupVisible] = useState(false);
+  const [facebookSetupVisible, setFacebookSetupVisible] = useState(false);
   const connectingRef = useRef(false);
   // Cached oauth result read from sessionStorage on mount (before workspaceId is ready)
   const pendingOauthToast = useRef<{ type: string; platform?: string; message?: string } | null>(null);
@@ -143,7 +145,8 @@ export default function SocialAccountsScreen() {
       const CLIENT_IDS: Record<string, string | undefined> = {
         instagram: process.env.EXPO_PUBLIC_INSTAGRAM_CLIENT_ID,
         pinterest: process.env.EXPO_PUBLIC_PINTEREST_CLIENT_ID,
-        facebook: process.env.EXPO_PUBLIC_FACEBOOK_CLIENT_ID,
+        // Facebook and Instagram share the same Meta app — fall back to Instagram client ID
+        facebook: process.env.EXPO_PUBLIC_FACEBOOK_CLIENT_ID ?? process.env.EXPO_PUBLIC_INSTAGRAM_CLIENT_ID,
         tiktok: process.env.EXPO_PUBLIC_TIKTOK_CLIENT_ID,
         x: process.env.EXPO_PUBLIC_X_CLIENT_ID,
         linkedin: process.env.EXPO_PUBLIC_LINKEDIN_CLIENT_ID,
@@ -200,36 +203,41 @@ export default function SocialAccountsScreen() {
           return;
         }
 
-        // Parse code + state out of the redirect URL
+        // Parse code / access_token + state from the redirect URL.
+        // Facebook Business Login may use implicit flow (access_token in hash).
+        // Facebook also uses a legacy #_=_? prefix — strip it before parsing.
         const url = new URL(result.url);
-        const returnedState = url.searchParams.get("state");
-        const code = url.searchParams.get("code");
-        const errorParam = url.searchParams.get("error");
+        let hashFragment = url.hash.replace(/^#/, "");
+        if (hashFragment.startsWith("_=_?")) hashFragment = hashFragment.slice(4);
+        const hashParams = new URLSearchParams(hashFragment);
+        const returnedState = url.searchParams.get("state") ?? hashParams.get("state");
+        const code = url.searchParams.get("code") ?? hashParams.get("code");
+        const accessToken = hashParams.get("access_token");
+        const errorParam = url.searchParams.get("error") ?? hashParams.get("error");
 
         if (errorParam) {
           throw new Error(
-            url.searchParams.get("error_description") ?? errorParam,
+            url.searchParams.get("error_description") ?? hashParams.get("error_description") ?? errorParam,
           );
         }
-        if (returnedState !== state) {
+        // State check: required for code flow; skip for implicit flow where Facebook
+        // doesn't always return state in the hash.
+        if (code && returnedState !== state) {
           throw new Error("OAuth state mismatch — possible CSRF attack.");
         }
-        if (!code) {
+        if (!code && !accessToken) {
           throw new Error("No authorization code returned.");
         }
 
-        // Exchange code for tokens via Edge Function
+        // Exchange code (or direct access token) for stored credentials via Edge Function
         const { data: session } = await supabase.auth.getSession();
+        const exchangeBody = code
+          ? { platform: platformId, code, workspaceId, redirectUri, codeVerifier }
+          : { platform: platformId, accessToken, workspaceId };
         const { data, error } = await supabase.functions.invoke(
           "oauth-exchange",
           {
-            body: {
-              platform: platformId,
-              code,
-              workspaceId,
-              redirectUri,
-              codeVerifier,
-            },
+            body: exchangeBody,
             headers: {
               Authorization: `Bearer ${session.session?.access_token}`,
             },
@@ -263,9 +271,13 @@ export default function SocialAccountsScreen() {
         showToast("Select a workspace before connecting accounts.", "error");
         return;
       }
-      // Show setup guide for Instagram (always — it reminds users of requirements)
+      // Show setup guide for Instagram and Facebook before OAuth
       if (platformId === "instagram") {
         setInstagramSetupVisible(true);
+        return;
+      }
+      if (platformId === "facebook") {
+        setFacebookSetupVisible(true);
         return;
       }
       await doOAuthConnect(platformId);
@@ -384,12 +396,16 @@ export default function SocialAccountsScreen() {
         visible={instagramSetupVisible}
         onClose={() => setInstagramSetupVisible(false)}
         onContinue={() => {
-          // Close the modal first so the touch gesture finishes cleanly
-          // (avoids "Cannot record touch end without a touch start" warning).
-          // OAuth redirect still preserves user-activation on web because
-          // window.location.href is synchronous within the same event loop tick.
           setInstagramSetupVisible(false);
           setTimeout(() => doOAuthConnect("instagram"), 0);
+        }}
+      />
+      <FacebookSetupModal
+        visible={facebookSetupVisible}
+        onClose={() => setFacebookSetupVisible(false)}
+        onContinue={() => {
+          setFacebookSetupVisible(false);
+          setTimeout(() => doOAuthConnect("facebook"), 0);
         }}
       />
     </SafeAreaView>

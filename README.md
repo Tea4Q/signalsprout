@@ -1,6 +1,8 @@
 # SignalSprout
 
-**SignalSprout** is a Social Growth Engine SaaS — a React Native / Expo application for managing social media content, analytics, costs, and brand identity across Instagram and Pinterest.
+**SignalSprout** is a Social Growth Engine SaaS — a React Native / Expo application for managing social media content, analytics, costs, and brand identity across Instagram, Facebook Pages, TikTok, and Pinterest.
+
+→ **[User Guide](docs/USER_GUIDE.md)** · **[Social Account Setup](docs/SOCIAL_SETUP.md)** · **[API Integrations](docs/api-integrations.md)**
 
 ---
 
@@ -12,6 +14,7 @@
 | UI | React Native 0.81.5 |
 | Database | Supabase (Postgres + RLS) |
 | Auth | Supabase Auth + expo-secure-store |
+| Background jobs | Inngest |
 | State | React Context |
 | Types | TypeScript + generated `types/database.ts` |
 | Validation | Zod |
@@ -21,18 +24,40 @@
 
 ## Environment Variables
 
-Create a `.env.local` file in the project root with the following variables:
+Create a `.env.local` file in the project root. All `EXPO_PUBLIC_*` vars are baked into the bundle at build time and must also be set in your Vercel project settings.
 
 ```ini
+# Supabase (required)
 EXPO_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
 EXPO_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
+
+# Instagram / Meta (same Meta app as Facebook)
+EXPO_PUBLIC_INSTAGRAM_CLIENT_ID=<meta-app-id>
+
+# Facebook Pages
+EXPO_PUBLIC_FACEBOOK_CLIENT_ID=<meta-app-id>
+
+# TikTok
+EXPO_PUBLIC_TIKTOK_CLIENT_KEY=<tiktok-client-key>
+EXPO_PUBLIC_TIKTOK_CLIENT_ID=<tiktok-client-key>
+
+# Pinterest
+EXPO_PUBLIC_PINTEREST_CLIENT_ID=<pinterest-app-id>
+
+# X / Twitter
+EXPO_PUBLIC_X_CLIENT_ID=<x-oauth2-client-id>
+
+# Inngest (server-side only — do NOT prefix with EXPO_PUBLIC_)
+INNGEST_EVENT_KEY=<inngest-event-key>
+INNGEST_SIGNING_KEY=<inngest-signing-key>
+INNGEST_SERVE_ORIGIN=https://<your-vercel-domain>
 ```
 
-These are read by `lib/env.ts` and will throw at startup if missing.
+`lib/env.ts` validates required vars at startup and throws a descriptive error if any are missing.
 
 ---
 
-## Setup
+## Local Development
 
 ```bash
 # Install dependencies
@@ -47,7 +72,7 @@ npx expo start --ios
 # Android emulator
 npx expo start --android
 
-# Web
+# Web (also runs the Inngest API route via Vercel dev)
 npx expo start --web
 ```
 
@@ -55,24 +80,43 @@ npx expo start --web
 
 ## Supabase Setup
 
-1. Create a Supabase project at https://supabase.com
-2. Apply migrations from `supabase/migrations/` in order using the Supabase CLI:
+1. Create a project at https://supabase.com
+2. Apply all migrations in order:
    ```bash
    supabase db push
    ```
 3. Deploy Edge Functions:
    ```bash
-   supabase functions deploy invite-member
-   supabase functions deploy generate-caption
-   supabase functions deploy generate-image
-   supabase functions deploy publish-post
+   supabase functions deploy publish-instagram --no-verify-jwt
+   supabase functions deploy publish-facebook --no-verify-jwt
+   supabase functions deploy publish-tiktok --no-verify-jwt
+   supabase functions deploy publish-pinterest --no-verify-jwt
+   supabase functions deploy publish-now --no-verify-jwt
+   supabase functions deploy generate-content --no-verify-jwt
+   supabase functions deploy generate-image --no-verify-jwt
+   supabase functions deploy oauth-exchange --no-verify-jwt
+   supabase functions deploy inngest-send --no-verify-jwt
    ```
-4. Set Edge Function secrets via the Supabase dashboard or:
+4. Set Edge Function secrets:
    ```bash
    supabase secrets set OPENAI_API_KEY=sk-...
-   supabase secrets set INSTAGRAM_APP_SECRET=...
-   supabase secrets set PINTEREST_APP_SECRET=...
+   supabase secrets set INSTAGRAM_CLIENT_SECRET=...
+   supabase secrets set FACEBOOK_CLIENT_SECRET=...
+   supabase secrets set TIKTOK_CLIENT_SECRET=...
+   supabase secrets set PINTEREST_CLIENT_SECRET=...
+   supabase secrets set X_CLIENT_SECRET=...
+   supabase secrets set VAULT_MASTER_KEY=<32-byte-hex>
    ```
+
+---
+
+## Vercel Deployment
+
+```bash
+npx vercel --prod --yes
+```
+
+Set the same `EXPO_PUBLIC_*` vars and the Inngest vars in the Vercel dashboard (or via `npx vercel env add`). They must exist before a production build — the bundle is static.
 
 ---
 

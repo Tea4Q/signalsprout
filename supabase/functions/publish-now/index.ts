@@ -81,7 +81,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: account } = await svc
       .from("social_accounts")
-      .select("external_account_id, account_identifier")
+      .select("external_account_id, account_identifier, access_token")
       .eq("id", post.social_account_id)
       .single();
 
@@ -113,22 +113,14 @@ Deno.serve(async (req: Request) => {
 
     // ── Instagram ─────────────────────────────────────────────────────────────
     if (post.platform === "instagram") {
-      const { data: vault } = await svc
-        .from("credential_vault")
-        .select("encrypted_value")
-        .eq("workspace_id", post.workspace_id)
-        .eq("service", "instagram")
-        .eq("name", "access_token")
-        .maybeSingle();
-
-      if (!vault) {
+      if (!account.access_token) {
         return new Response(
-          JSON.stringify({ error: "Instagram access token not found in vault" }),
+          JSON.stringify({ error: "Instagram access token not found. Please reconnect your Instagram account." }),
           { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
 
-      const accessToken = vault.encrypted_value;
+      const accessToken = account.access_token;
       const igUserId = account.external_account_id;
       if (!igUserId) {
         return new Response(
@@ -163,7 +155,7 @@ Deno.serve(async (req: Request) => {
       });
 
       const containerRes = await fetch(
-        `https://graph.instagram.com/v19.0/${igUserId}/media`,
+        `https://graph.facebook.com/v20.0/${igUserId}/media`,
         {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -178,7 +170,7 @@ Deno.serve(async (req: Request) => {
       }
 
       const publishRes = await fetch(
-        `https://graph.instagram.com/v19.0/${igUserId}/media_publish`,
+        `https://graph.facebook.com/v20.0/${igUserId}/media_publish`,
         {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -197,22 +189,14 @@ Deno.serve(async (req: Request) => {
 
     // ── Pinterest ─────────────────────────────────────────────────────────────
     } else if (post.platform === "pinterest") {
-      const { data: vault } = await svc
-        .from("credential_vault")
-        .select("encrypted_value")
-        .eq("workspace_id", post.workspace_id)
-        .eq("service", "pinterest")
-        .eq("name", "access_token")
-        .maybeSingle();
-
-      if (!vault) {
+      if (!account.access_token) {
         return new Response(
-          JSON.stringify({ error: "Pinterest access token not found in vault" }),
+          JSON.stringify({ error: "Pinterest access token not found. Please reconnect your Pinterest account." }),
           { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
 
-      const accessToken = vault.encrypted_value;
+      const accessToken = account.access_token;
       const boardId = account.account_identifier;
       if (!boardId) {
         return new Response(
@@ -283,6 +267,28 @@ Deno.serve(async (req: Request) => {
         metadata: { platform: post.platform, external_post_id: externalPostId, mode: "publish_now" },
       }),
     ]);
+
+    // Fire post/published Inngest event for observability and downstream processing.
+    const inngestEventKey = Deno.env.get("INNGEST_EVENT_KEY");
+    if (inngestEventKey) {
+      try {
+        await fetch(`https://inn.gs/e/${inngestEventKey}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "post/published",
+            data: {
+              post_id,
+              platform: post.platform,
+              external_post_id: externalPostId,
+              mode: "publish_now",
+            },
+          }),
+        });
+      } catch (err) {
+        console.warn("Inngest post/published event failed (non-fatal):", err);
+      }
+    }
 
     return new Response(
       JSON.stringify({ success: true, external_post_id: externalPostId }),

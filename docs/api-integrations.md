@@ -126,9 +126,136 @@ Set the following via `supabase secrets set` or the Supabase dashboard:
 
 ```bash
 OPENAI_API_KEY=sk-...
-INSTAGRAM_APP_ID=...
-INSTAGRAM_APP_SECRET=...
-PINTEREST_APP_ID=...
-PINTEREST_APP_SECRET=...
-VAULT_MASTER_KEY=<32-byte hex>   # Used for envelope encryption
+INSTAGRAM_CLIENT_SECRET=...
+FACEBOOK_CLIENT_SECRET=...         # Same Meta app secret as Instagram
+TIKTOK_CLIENT_SECRET=...
+PINTEREST_CLIENT_SECRET=...
+X_CLIENT_SECRET=...
+VAULT_MASTER_KEY=<32-byte hex>     # Used for envelope encryption
 ```
+
+---
+
+## Facebook Graph API (Pages)
+
+### OAuth Setup
+
+Uses the same Meta Developer app as Instagram. Additional permissions required:
+
+- `pages_manage_posts`
+- `pages_read_engagement`
+- `pages_show_list` (required to exchange the user token for a Page access token at publish time)
+
+### Token Exchange at Publish Time
+
+The OAuth flow returns a **user access token**. Publishing to a Page requires a **Page access token**, which is obtained server-side at publish time:
+
+```
+GET /v21.0/me/accounts?access_token={user_token}
+→ returns array of pages the user manages, each with its own access_token
+```
+
+SignalSprout finds the matching page by `external_account_id` (the Facebook Page ID stored on `social_accounts`) and uses that page's access token for all publish calls.
+
+### Publishing a Photo Post
+
+```
+POST /v21.0/{page_id}/photos
+Content-Type: application/x-www-form-urlencoded
+
+message={caption}
+url={signed_image_url}
+access_token={page_access_token}
+
+→ { id: "photo_id", post_id: "page_post_id" }
+```
+
+`post_id` is stored as `posts.external_post_id`.
+
+### Publishing a Text-Only Post
+
+```
+POST /v21.0/{page_id}/feed
+Content-Type: application/x-www-form-urlencoded
+
+message={caption}
+access_token={page_access_token}
+
+→ { id: "page_post_id" }
+```
+
+### Rate Limits
+
+- 200 calls per user per hour (shared with Instagram)
+- Content publishing: 25 posts per 24 hours per Page
+
+---
+
+## TikTok Content Posting API v2
+
+### OAuth Setup
+
+1. Create a TikTok Developer app at https://developers.tiktok.com
+2. Add the **Content Posting API** product
+3. Required scope: `video.publish` (replaces the deprecated `video.list`)
+4. Uses PKCE (code_challenge / S256) — `usesPkce: true` in `lib/platforms/config.ts`
+
+### Initiating a Photo Post
+
+```
+POST https://open.tiktokapis.com/v2/post/publish/content/init/
+Authorization: Bearer {access_token}
+Content-Type: application/json; charset=UTF-8
+
+{
+  "post_info": {
+    "title": "{caption}",
+    "privacy_level": "PUBLIC_TO_EVERYONE",
+    "disable_comment": false
+  },
+  "source_info": {
+    "source": "PULL_FROM_URL",
+    "photo_images": ["{signed_url_1}", "{signed_url_2}"],
+    "photo_cover_index": 0
+  },
+  "post_mode": "DIRECT_POST",
+  "media_type": "PHOTO"
+}
+
+→ { data: { publish_id: "..." }, error: { code: "ok" } }
+```
+
+Supports up to 35 images per post (TikTok carousel).
+
+### Polling for Completion
+
+TikTok processes `PULL_FROM_URL` requests asynchronously. Poll until `PUBLISH_COMPLETE` or `FAILED`:
+
+```
+POST https://open.tiktokapis.com/v2/post/publish/status/fetch/
+Authorization: Bearer {access_token}
+Content-Type: application/json; charset=UTF-8
+
+{ "publish_id": "..." }
+
+→ {
+    data: {
+      status: "PUBLISH_COMPLETE" | "PROCESSING_DOWNLOAD" | "PROCESSING_UPLOAD" | "FAILED",
+      publicaly_available_post_id: ["..."],   // TikTok's spelling
+      fail_reason: "..."
+    }
+  }
+```
+
+`publicaly_available_post_id[0]` (note TikTok's typo) is stored as `posts.external_post_id`.
+
+SignalSprout polls up to 5 times with 3-second intervals. If the status is still processing after 5 polls, the `publish_id` is stored as a best-effort ID — TikTok continues processing in the background.
+
+### Rate Limits
+
+- Content Posting API: 20 requests per minute per access token
+- Max post frequency: varies by account tier
+
+### ⚠️ Sandbox Requirement
+
+The Content Posting API requires TikTok app review before posts can reach accounts other than the developer's own. Submit for review at https://developers.tiktok.com/products/content-posting-api/

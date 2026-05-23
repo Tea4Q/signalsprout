@@ -18,7 +18,18 @@ export type PostUnscheduledEvent = {
   };
 };
 
+export type PostPublishedEvent = {
+  name: "post/published";
+  data: {
+    post_id: string;
+    platform: string;
+    external_post_id: string;
+    mode: "publish_now" | "scheduled";
+  };
+};
+
 export type Events = {
   "post/scheduled": PostScheduledEvent;
   "post/unscheduled": PostUnscheduledEvent;
+  "post/published": PostPublishedEvent;
 };

@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { ThemeProvider } from "@/context/theme-context";
 import { ToastProvider } from "@/context/toast-context";
 import { WorkspaceProvider, type WorkspaceRole } from "@/context/workspace-context";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { isOnboardingComplete } from "@/app/onboarding";
 import { getMyRole } from "@/services/workspace/memberService";
 import { getMyWorkspaces } from "@/services/workspace/workspaceService";
@@ -128,18 +129,34 @@ function RootLayout() {
   }, []);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setLoading(false);
-    });
-
+    // onAuthStateChange fires INITIAL_SESSION synchronously on setup,
+    // so we use it as the single source of truth instead of getSession().
     const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, newSession) => {
+      (event, newSession) => {
         setSession(newSession);
+        // Mark loading done once we have the initial session state
+        if (event === "INITIAL_SESSION") {
+          setLoading(false);
+          // For returning users whose token is still valid, INITIAL_SESSION
+          // is the only event that fires (SIGNED_IN is not re-fired). Load
+          // workspaces here so workspaceId is populated on page refresh.
+          if (newSession) loadWorkspaces();
+        }
+        // Reload workspaces on sign-in and token refresh
+        if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+          loadWorkspaces();
+        }
+        // Clear workspace on sign-out
+        if (event === "SIGNED_OUT") {
+          setWorkspaceState(null);
+          setAllWorkspaces([]);
+          setRole(null);
+        }
       },
     );
 
     return () => listener.subscription.unsubscribe();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -151,7 +168,7 @@ function RootLayout() {
       setRole(null);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session]);
+  }, []);
 
   useEffect(() => {
     if (loading) return;
@@ -264,12 +281,14 @@ function RootLayout() {
 
 export default function RootLayoutWithProviders() {
   return (
-    <ErrorBoundary>
-      <ThemeProvider>
-        <ToastProvider>
-          <RootLayout />
-        </ToastProvider>
-      </ThemeProvider>
-    </ErrorBoundary>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ErrorBoundary>
+        <ThemeProvider>
+          <ToastProvider>
+            <RootLayout />
+          </ToastProvider>
+        </ThemeProvider>
+      </ErrorBoundary>
+    </GestureHandlerRootView>
   );
 }

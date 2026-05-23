@@ -3,18 +3,20 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Switch,
   Text,
   View,
+  Platform
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { radius, spacing, typography } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { useWorkspace } from "@/context/workspace-context";
 import { CaptionEditor } from "@/components/content/CaptionEditor";
+import { CreativePreview } from "@/components/content/CreativePreview";
 import { HashtagList } from "@/components/content/HashtagList";
 import { ScheduleForm } from "@/components/calendar/ScheduleForm";
 import { AppButton } from "@/components/ui/AppButton";
@@ -24,11 +26,17 @@ import {
   getPost,
   updatePost,
   deletePost,
+  linkPostAsset,
 } from "@/services/scheduling/postService";
 import {
   schedulePost,
   cancelSchedule,
+  publishNow,
 } from "@/services/scheduling/schedulerService";
+import { generateImage, GeneratedImage } from "@/services/content/imageGenerationService";
+import { uploadExternalImage, uploadVideo } from "@/services/content/assetService";
+import { AssetPickerSheet } from "@/components/assets/AssetPickerSheet";
+import { supabase } from "@/lib/supabase";
 import type { Database } from "@/types/database";
 
 type PostRow = Database["public"]["Tables"]["posts"]["Row"];
@@ -75,8 +83,18 @@ export default function EditPostModal() {
   const [socialAccountId, setSocialAccountId] = useState<string | null>(null);
 
   const [saving, setSaving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Image / video state
+  const [image, setImage] = useState<GeneratedImage | null>(null);
+  const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null);
+  const [generatingImage, setGeneratingImage] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [showLibraryPicker, setShowLibraryPicker] = useState(false);
+  const [imagePrompt, setImagePrompt] = useState("");
 
   const s = styles(colors);
 
@@ -85,8 +103,9 @@ export default function EditPostModal() {
       setLoadingPost(false);
       return;
     }
-    getPost(postId)
-      .then((p) => {
+    (async () => {
+      try {
+        const p = await getPost(postId);
         setPost(p);
         setCaption(p.caption ?? "");
         setHashtags((p.hashtags as string[] | null) ?? []);
@@ -95,9 +114,28 @@ export default function EditPostModal() {
         setIsScheduled(scheduled);
         if (p.scheduled_for) setScheduledFor(new Date(p.scheduled_for));
         if (p.social_account_id) setSocialAccountId(p.social_account_id);
-      })
-      .catch(() => setError("Failed to load post."))
-      .finally(() => setLoadingPost(false));
+
+        // Load existing post assets
+        const { data: assetData } = await supabase
+          .from("post_assets")
+          .select("assets(id, file_path, mime_type)")
+          .eq("post_id", p.id)
+          .order("sort_order")
+          .limit(1)
+          .single();
+        if (assetData) {
+          const asset = (assetData as { assets: { id: string; file_path: string; mime_type: string | null } | null }).assets;
+          if (asset?.file_path) {
+            const { data: urlData } = supabase.storage.from("assets").getPublicUrl(asset.file_path);
+            setExistingImageUrl(urlData.publicUrl);
+          }
+        }
+      } catch {
+        setError("Failed to load post.");
+      } finally {
+        setLoadingPost(false);
+      }
+    })();
   }, [postId]);
 
   const handleAddHashtag = useCallback(() => {
@@ -108,8 +146,78 @@ export default function EditPostModal() {
     setNewHashtag("");
   }, [newHashtag]);
 
+  const handleGenerateImage = useCallback(async () => {
+    if (!workspaceId || !post) return;
+    if (!imagePrompt.trim()) {
+      setError("Please enter a prompt for the image.");
+      return;
+    }
+    setError(null);
+    setGeneratingImage(true);
+    try {
+      const result = await generateImage(
+        imagePrompt.trim(),
+        post.platform as "instagram" | "pinterest",
+        post.brand_id,
+        workspaceId,
+      );
+      setImage(result);
+      setExistingImageUrl(null);
+      await linkPostAsset(post.id, result.asset_id);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Image generation failed.");
+    } finally {
+      setGeneratingImage(false);
+    }
+  }, [workspaceId, post, imagePrompt]);
+
+  const handleUploadImage = useCallback(async () => {
+    if (!workspaceId || !post) return;
+    setError(null);
+    setUploadingImage(true);
+    try {
+      const result = await uploadExternalImage(workspaceId, post.brand_id);
+      setImage(result);
+      setExistingImageUrl(null);
+      await linkPostAsset(post.id, result.asset_id);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Upload failed.";
+      if (msg !== "No image selected.") setError(msg);
+    } finally {
+      setUploadingImage(false);
+    }
+  }, [workspaceId, post]);
+
+  const handleUploadVideo = useCallback(async () => {
+    if (!workspaceId || !post) return;
+    setError(null);
+    setUploadingVideo(true);
+    try {
+      const result = await uploadVideo(workspaceId, post.brand_id);
+      setImage(result);
+      setExistingImageUrl(null);
+      await linkPostAsset(post.id, result.asset_id);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Upload failed.";
+      if (msg !== "No video selected.") setError(msg);
+    } finally {
+      setUploadingVideo(false);
+    }
+  }, [workspaceId, post]);
+
   const handleSave = useCallback(async () => {
     if (!postId || !post) return;
+
+    const hasMedia = !!(image || existingImageUrl);
+    const isVideoPost = post.media_type === "video";
+    if (isVideoPost && (post.platform === "instagram" || post.platform === "tiktok") && !hasMedia) {
+      setError("A video file is required for this post. Upload one above.");
+      return;
+    }
+    if (!isVideoPost && (post.platform === "instagram" || post.platform === "pinterest") && !hasMedia) {
+      setError("An image is required for Instagram and Pinterest posts. Generate or upload one above.");
+      return;
+    }
 
     if (isScheduled) {
       if (!socialAccountId) {
@@ -125,10 +233,11 @@ export default function EditPostModal() {
     setError(null);
     setSaving(true);
     try {
-      const wasScheduled = post.status === "scheduled";
+      // Treat failed posts the same as scheduled — they had a schedule, user is choosing to unschedule
+      const wasScheduled = post.status === "scheduled" || post.status === "failed";
 
       if (wasScheduled && !isScheduled) {
-        // Cancel queued publish jobs, then set to draft
+        // Cancel/clean up publish jobs, then revert to draft
         await cancelSchedule(postId);
         await updatePost(postId, {
           caption,
@@ -137,7 +246,10 @@ export default function EditPostModal() {
           social_account_id: socialAccountId,
           status: "draft",
           scheduled_for: null,
+          failure_reason: null,
         });
+        // Navigate to Content Studio so the user can see the draft
+        router.replace("/(tabs)/content");
       } else {
         await updatePost(postId, {
           caption,
@@ -148,9 +260,8 @@ export default function EditPostModal() {
         if (isScheduled) {
           await schedulePost(postId, scheduledFor.toISOString());
         }
+        router.back();
       }
-
-      router.back();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Save failed.");
     } finally {
@@ -165,11 +276,56 @@ export default function EditPostModal() {
     isScheduled,
     scheduledFor,
     socialAccountId,
+    image,
+    existingImageUrl,
     router,
   ]);
 
+  const handlePublishNow = useCallback(() => {
+  if (!postId || !post) return;
+
+  if (!socialAccountId) {
+    setError("Please select a social account before publishing.");
+    return;
+  }
+
+  const doPublish = async () => {
+    setPublishing(true);
+    setError(null);
+    try {
+      await updatePost(postId, {
+        caption,
+        hashtags,
+        destination_url: destinationUrl.trim() || null,
+        social_account_id: socialAccountId,
+        status: "approved",
+      });
+      await publishNow(postId);
+      router.back();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Publish failed.");
+      setPublishing(false);
+    }
+  };
+
+  if (Platform.OS === "web") {
+    if (window.confirm("Publish this post immediately to your connected social account?")) {
+      doPublish();
+    }
+  } else {
+    Alert.alert(
+      "Publish Now",
+      "This will save your current edits and immediately publish the post.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Publish", onPress: doPublish },
+      ],
+    );
+  }
+}, [postId, post, caption, hashtags, destinationUrl, socialAccountId, router]);
+
   const handleDelete = useCallback(() => {
-    if (!postId) return;
+    if (!postId || !post) return;
     Alert.alert(
       "Delete Post",
       "This post will be permanently deleted. This cannot be undone.",
@@ -191,7 +347,7 @@ export default function EditPostModal() {
         },
       ],
     );
-  }, [postId, router]);
+  }, [postId, post, router]);
 
   if (!workspaceId || loadingPost) {
     return (
@@ -290,6 +446,33 @@ export default function EditPostModal() {
           </View>
         ) : (
           <>
+            {/* Post Preview */}
+            <View style={s.previewCard}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.sm }}>
+                <View style={{
+                  width: 8, height: 8, borderRadius: 4,
+                  backgroundColor: post.platform === "instagram" ? "#E1306C" : post.platform === "pinterest" ? "#E60023" : colors.primary,
+                }} />
+                <Text style={{ ...typography.micro, color: colors.textMuted, textTransform: "uppercase", fontWeight: "600", letterSpacing: 0.5 }}>
+                  {post.platform} preview
+                </Text>
+              </View>
+              {caption ? (
+                <Text style={{ ...typography.body, color: colors.textPrimary, lineHeight: 22 }} numberOfLines={5}>
+                  {caption}
+                </Text>
+              ) : (
+                <Text style={{ ...typography.body, color: colors.textMuted }}>No caption yet…</Text>
+              )}
+              {hashtags.length > 0 && (
+                <Text style={{ ...typography.caption, color: colors.secondary, marginTop: spacing.sm }} numberOfLines={2}>
+                  {hashtags.join(" ")}
+                </Text>
+              )}
+            </View>
+
+            <View style={{ height: spacing.lg }} />
+
             {/* Caption */}
             <CaptionEditor
               value={caption}
@@ -311,6 +494,7 @@ export default function EditPostModal() {
             <View style={s.addTagRow}>
               <View style={{ flex: 1 }}>
                 <AppInput
+                  label=""
                   value={newHashtag}
                   onChangeText={setNewHashtag}
                   placeholder="Add hashtag"
@@ -334,6 +518,103 @@ export default function EditPostModal() {
                   +
                 </Text>
               </Pressable>
+            </View>
+
+            <View style={{ height: spacing.xl }} />
+
+            {/* Media section — Image or Video depending on post.media_type */}
+            <View style={s.imageSection}>
+              {post.media_type === "video" ? (
+                <>
+                  <Text style={{ ...typography.caption, color: colors.textSecondary, fontWeight: "600", marginBottom: spacing.sm }}>
+                    VIDEO
+                  </Text>
+                  {/* Video placeholder */}
+                  <View
+                    style={[
+                      s.videoPlaceholder,
+                      { backgroundColor: colors.surfaceAlt, borderColor: colors.border },
+                    ]}
+                  >
+                    {image || existingImageUrl ? (
+                      <View style={{ alignItems: "center", gap: spacing.sm }}>
+                        <Text style={{ fontSize: 40 }}>🎬</Text>
+                        <Text style={{ ...typography.body, color: colors.textPrimary, fontWeight: "600" }} numberOfLines={1}>
+                          {(image as (GeneratedImage & { fileName?: string }) | null)?.fileName ?? "Video file"}
+                        </Text>
+                        <Text style={{ ...typography.caption, color: colors.textSecondary }}>
+                          {post.platform === "tiktok" ? "TikTok Video" : "Instagram Reel"}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={{ alignItems: "center", gap: spacing.sm }}>
+                        <Text style={{ fontSize: 40 }}>📹</Text>
+                        <Text style={{ ...typography.caption, color: colors.textMuted, textAlign: "center" }}>
+                          {post.platform === "tiktok"
+                            ? "No video linked. Upload a video file to post on TikTok."
+                            : "No video linked. Upload a video file to post as an Instagram Reel."}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  <View style={{ height: spacing.md }} />
+                  <AppButton
+                    label={uploadingVideo ? "Uploading…" : image || existingImageUrl ? "Replace Video" : "Upload Video"}
+                    onPress={handleUploadVideo}
+                    disabled={uploadingVideo}
+                    loading={uploadingVideo}
+                    variant={image || existingImageUrl ? "secondary" : "primary"}
+                  />
+                </>
+              ) : (
+                <>
+                  <Text style={{ ...typography.caption, color: colors.textSecondary, fontWeight: "600", marginBottom: spacing.sm }}>
+                    IMAGE
+                  </Text>
+                  <CreativePreview
+                    publicUrl={image?.public_url ?? existingImageUrl}
+                    platform={post.platform as "instagram" | "pinterest"}
+                    loading={generatingImage}
+                    caption={caption}
+                    hashtags={hashtags}
+                  />
+                  <View style={{ height: spacing.md }} />
+                  <AppInput
+                    label="Image Prompt"
+                    value={imagePrompt}
+                    onChangeText={setImagePrompt}
+                    placeholder="Describe the image to generate…"
+                  />
+                  <View style={{ height: spacing.sm }} />
+                  <View style={{ flexDirection: "row", gap: spacing.sm }}>
+                    <View style={{ flex: 1 }}>
+                      <AppButton
+                        label={generatingImage ? "Generating…" : image || existingImageUrl ? "Regenerate" : "Generate"}
+                        onPress={handleGenerateImage}
+                        disabled={generatingImage || uploadingImage || !imagePrompt.trim()}
+                        loading={generatingImage}
+                        variant={image || existingImageUrl ? "secondary" : "primary"}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <AppButton
+                        label={uploadingImage ? "Uploading…" : "Upload Image"}
+                        onPress={handleUploadImage}
+                        disabled={generatingImage || uploadingImage}
+                        loading={uploadingImage}
+                        variant="secondary"
+                      />
+                    </View>
+                  </View>
+                  <View style={{ height: spacing.sm }} />
+                  <AppButton
+                    label="Use from Library"
+                    onPress={() => setShowLibraryPicker(true)}
+                    disabled={generatingImage || uploadingImage}
+                    variant="secondary"
+                  />
+                </>
+              )}
             </View>
 
             <View style={{ height: spacing.xl }} />
@@ -392,9 +673,26 @@ export default function EditPostModal() {
                   : "Save as Draft"
               }
               onPress={handleSave}
-              disabled={saving}
+              disabled={saving || publishing}
               loading={saving}
             />
+
+            <View style={{ height: spacing.md }} />
+
+            <Pressable
+              onPress={handlePublishNow}
+              disabled={publishing || saving}
+              style={({ pressed }) => [
+                s.publishNowButton,
+                { opacity: pressed || publishing || saving ? 0.7 : 1 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Publish post now"
+            >
+              <Text style={{ ...typography.body, color: colors.background, fontWeight: "600" }}>
+                {publishing ? "Publishing…" : "⚡ Post Now"}
+              </Text>
+            </Pressable>
 
             <View style={{ height: spacing["3xl"] }} />
 
@@ -422,11 +720,21 @@ export default function EditPostModal() {
           </>
         )}
       </ScrollView>
+      {workspaceId && (
+        <AssetPickerSheet
+          visible={showLibraryPicker}
+          workspaceId={workspaceId}
+          onClose={() => setShowLibraryPicker(false)}
+          onSelect={(picked) => {
+            setImage(picked);
+            setShowLibraryPicker(false);
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function styles(colors: any) {
   return StyleSheet.create({
     safeArea: {
@@ -459,6 +767,22 @@ function styles(colors: any) {
       borderWidth: 1,
       borderColor: colors.border,
     },
+    imageSection: {
+      backgroundColor: colors.surface,
+      borderRadius: radius.lg,
+      padding: spacing.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    videoPlaceholder: {
+      borderRadius: radius.xl,
+      borderWidth: 1,
+      borderStyle: "dashed",
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: spacing["3xl"],
+      paddingHorizontal: spacing.xl,
+    },
     addTagRow: {
       flexDirection: "row",
       alignItems: "center",
@@ -482,6 +806,20 @@ function styles(colors: any) {
       padding: spacing.lg,
       borderWidth: 1,
       borderColor: colors.border,
+    },
+    previewCard: {
+      backgroundColor: colors.surfaceAlt,
+      borderRadius: radius.lg,
+      padding: spacing.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    publishNowButton: {
+      height: 48,
+      borderRadius: radius.md,
+      backgroundColor: colors.accent,
+      alignItems: "center" as const,
+      justifyContent: "center" as const,
     },
     deleteButton: {
       alignItems: "center",

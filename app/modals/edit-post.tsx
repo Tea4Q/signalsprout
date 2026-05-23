@@ -34,7 +34,7 @@ import {
   publishNow,
 } from "@/services/scheduling/schedulerService";
 import { generateImage, GeneratedImage } from "@/services/content/imageGenerationService";
-import { uploadExternalImage } from "@/services/content/assetService";
+import { uploadExternalImage, uploadVideo } from "@/services/content/assetService";
 import { AssetPickerSheet } from "@/components/assets/AssetPickerSheet";
 import { supabase } from "@/lib/supabase";
 import type { Database } from "@/types/database";
@@ -87,11 +87,12 @@ export default function EditPostModal() {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Image state
+  // Image / video state
   const [image, setImage] = useState<GeneratedImage | null>(null);
   const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null);
   const [generatingImage, setGeneratingImage] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
   const [showLibraryPicker, setShowLibraryPicker] = useState(false);
   const [imagePrompt, setImagePrompt] = useState("");
 
@@ -187,11 +188,33 @@ export default function EditPostModal() {
     }
   }, [workspaceId, post]);
 
+  const handleUploadVideo = useCallback(async () => {
+    if (!workspaceId || !post) return;
+    setError(null);
+    setUploadingVideo(true);
+    try {
+      const result = await uploadVideo(workspaceId, post.brand_id);
+      setImage(result);
+      setExistingImageUrl(null);
+      await linkPostAsset(post.id, result.asset_id);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Upload failed.";
+      if (msg !== "No video selected.") setError(msg);
+    } finally {
+      setUploadingVideo(false);
+    }
+  }, [workspaceId, post]);
+
   const handleSave = useCallback(async () => {
     if (!postId || !post) return;
 
-    const hasImage = !!(image || existingImageUrl);
-    if ((post.platform === "instagram" || post.platform === "pinterest") && !hasImage) {
+    const hasMedia = !!(image || existingImageUrl);
+    const isVideoPost = post.media_type === "video";
+    if (isVideoPost && (post.platform === "instagram" || post.platform === "tiktok") && !hasMedia) {
+      setError("A video file is required for this post. Upload one above.");
+      return;
+    }
+    if (!isVideoPost && (post.platform === "instagram" || post.platform === "pinterest") && !hasMedia) {
       setError("An image is required for Instagram and Pinterest posts. Generate or upload one above.");
       return;
     }
@@ -499,53 +522,99 @@ export default function EditPostModal() {
 
             <View style={{ height: spacing.xl }} />
 
-            {/* Image */}
+            {/* Media section — Image or Video depending on post.media_type */}
             <View style={s.imageSection}>
-              <Text style={{ ...typography.caption, color: colors.textSecondary, fontWeight: "600", marginBottom: spacing.sm }}>
-                IMAGE
-              </Text>
-              <CreativePreview
-                publicUrl={image?.public_url ?? existingImageUrl}
-                platform={post.platform as "instagram" | "pinterest"}
-                loading={generatingImage}
-                caption={caption}
-                hashtags={hashtags}
-              />
-              <View style={{ height: spacing.md }} />
-              <AppInput
-                label="Image Prompt"
-                value={imagePrompt}
-                onChangeText={setImagePrompt}
-                placeholder="Describe the image to generate…"
-              />
-              <View style={{ height: spacing.sm }} />
-              <View style={{ flexDirection: "row", gap: spacing.sm }}>
-                <View style={{ flex: 1 }}>
+              {post.media_type === "video" ? (
+                <>
+                  <Text style={{ ...typography.caption, color: colors.textSecondary, fontWeight: "600", marginBottom: spacing.sm }}>
+                    VIDEO
+                  </Text>
+                  {/* Video placeholder */}
+                  <View
+                    style={[
+                      s.videoPlaceholder,
+                      { backgroundColor: colors.surfaceAlt, borderColor: colors.border },
+                    ]}
+                  >
+                    {image || existingImageUrl ? (
+                      <View style={{ alignItems: "center", gap: spacing.sm }}>
+                        <Text style={{ fontSize: 40 }}>🎬</Text>
+                        <Text style={{ ...typography.body, color: colors.textPrimary, fontWeight: "600" }} numberOfLines={1}>
+                          {(image as (GeneratedImage & { fileName?: string }) | null)?.fileName ?? "Video file"}
+                        </Text>
+                        <Text style={{ ...typography.caption, color: colors.textSecondary }}>
+                          {post.platform === "tiktok" ? "TikTok Video" : "Instagram Reel"}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={{ alignItems: "center", gap: spacing.sm }}>
+                        <Text style={{ fontSize: 40 }}>📹</Text>
+                        <Text style={{ ...typography.caption, color: colors.textMuted, textAlign: "center" }}>
+                          {post.platform === "tiktok"
+                            ? "No video linked. Upload a video file to post on TikTok."
+                            : "No video linked. Upload a video file to post as an Instagram Reel."}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  <View style={{ height: spacing.md }} />
                   <AppButton
-                    label={generatingImage ? "Generating…" : image || existingImageUrl ? "Regenerate" : "Generate"}
-                    onPress={handleGenerateImage}
-                    disabled={generatingImage || uploadingImage || !imagePrompt.trim()}
-                    loading={generatingImage}
+                    label={uploadingVideo ? "Uploading…" : image || existingImageUrl ? "Replace Video" : "Upload Video"}
+                    onPress={handleUploadVideo}
+                    disabled={uploadingVideo}
+                    loading={uploadingVideo}
                     variant={image || existingImageUrl ? "secondary" : "primary"}
                   />
-                </View>
-                <View style={{ flex: 1 }}>
+                </>
+              ) : (
+                <>
+                  <Text style={{ ...typography.caption, color: colors.textSecondary, fontWeight: "600", marginBottom: spacing.sm }}>
+                    IMAGE
+                  </Text>
+                  <CreativePreview
+                    publicUrl={image?.public_url ?? existingImageUrl}
+                    platform={post.platform as "instagram" | "pinterest"}
+                    loading={generatingImage}
+                    caption={caption}
+                    hashtags={hashtags}
+                  />
+                  <View style={{ height: spacing.md }} />
+                  <AppInput
+                    label="Image Prompt"
+                    value={imagePrompt}
+                    onChangeText={setImagePrompt}
+                    placeholder="Describe the image to generate…"
+                  />
+                  <View style={{ height: spacing.sm }} />
+                  <View style={{ flexDirection: "row", gap: spacing.sm }}>
+                    <View style={{ flex: 1 }}>
+                      <AppButton
+                        label={generatingImage ? "Generating…" : image || existingImageUrl ? "Regenerate" : "Generate"}
+                        onPress={handleGenerateImage}
+                        disabled={generatingImage || uploadingImage || !imagePrompt.trim()}
+                        loading={generatingImage}
+                        variant={image || existingImageUrl ? "secondary" : "primary"}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <AppButton
+                        label={uploadingImage ? "Uploading…" : "Upload Image"}
+                        onPress={handleUploadImage}
+                        disabled={generatingImage || uploadingImage}
+                        loading={uploadingImage}
+                        variant="secondary"
+                      />
+                    </View>
+                  </View>
+                  <View style={{ height: spacing.sm }} />
                   <AppButton
-                    label={uploadingImage ? "Uploading…" : "Upload Image"}
-                    onPress={handleUploadImage}
+                    label="Use from Library"
+                    onPress={() => setShowLibraryPicker(true)}
                     disabled={generatingImage || uploadingImage}
-                    loading={uploadingImage}
                     variant="secondary"
                   />
-                </View>
-              </View>
-              <View style={{ height: spacing.sm }} />
-              <AppButton
-                label="Use from Library"
-                onPress={() => setShowLibraryPicker(true)}
-                disabled={generatingImage || uploadingImage}
-                variant="secondary"
-              />
+                </>
+              )}
             </View>
 
             <View style={{ height: spacing.xl }} />
@@ -704,6 +773,15 @@ function styles(colors: any) {
       padding: spacing.lg,
       borderWidth: 1,
       borderColor: colors.border,
+    },
+    videoPlaceholder: {
+      borderRadius: radius.xl,
+      borderWidth: 1,
+      borderStyle: "dashed",
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: spacing["3xl"],
+      paddingHorizontal: spacing.xl,
     },
     addTagRow: {
       flexDirection: "row",

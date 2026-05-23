@@ -130,6 +130,78 @@ export async function uploadExternalImage(
 }
 
 /**
+ * Opens the device video library, uploads the selected video to Supabase
+ * storage, records it in the assets table with type "uploaded_video", and
+ * returns a GeneratedImage-compatible object so it slots into the same
+ * post-creation flow.
+ *
+ * Supports Instagram Reels and TikTok video posts.
+ */
+export async function uploadVideo(
+  workspaceId: string,
+  brandId: string,
+): Promise<GeneratedImage & { fileName: string; durationMs: number | null }> {
+  const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (status !== "granted") {
+    throw new Error("Permission to access photo library was denied.");
+  }
+
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: "videos",
+    allowsEditing: false,
+    quality: 1,
+    videoMaxDuration: 600, // 10 min safety cap; platform limits enforced server-side
+  });
+
+  if (result.canceled || !result.assets[0]) {
+    throw new Error("No video selected.");
+  }
+
+  const picked = result.assets[0];
+  const uri = picked.uri;
+  const ext = (uri.split(".").pop() ?? "mp4").toLowerCase();
+  const mime = picked.mimeType ?? `video/${ext === "mov" ? "quicktime" : ext}`;
+  const fileName = uri.split("/").pop() ?? `video.${ext}`;
+
+  const response = await fetch(uri);
+  const blob = await response.blob();
+
+  const filePath = `${workspaceId}/${brandId}/${Date.now()}_video.${ext}`;
+  const { error: uploadError } = await supabase.storage
+    .from("assets")
+    .upload(filePath, blob, { contentType: mime, upsert: false });
+  if (uploadError) throw uploadError;
+
+  const { data: row, error: dbError } = await supabase
+    .from("assets")
+    .insert({
+      workspace_id: workspaceId,
+      brand_id: brandId,
+      file_path: filePath,
+      type: "uploaded_video" as Database["public"]["Enums"]["asset_type"],
+      mime_type: mime,
+      width: picked.width ?? null,
+      height: picked.height ?? null,
+    })
+    .select()
+    .single();
+  if (dbError) throw dbError;
+
+  const { data: urlData } = supabase.storage.from("assets").getPublicUrl(filePath);
+
+  return {
+    asset_id: row.id,
+    file_path: filePath,
+    public_url: urlData.publicUrl,
+    width: picked.width ?? 0,
+    height: picked.height ?? 0,
+    revised_prompt: "",
+    fileName,
+    durationMs: picked.duration ?? null,
+  };
+}
+
+/**
  * Marks an asset as the brand's character reference image used in Runway
  * image generation. Clears any previous character reference for the brand.
  */

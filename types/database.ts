@@ -662,6 +662,7 @@ export type Database = {
           hashtags: string[] | null;
           hook: string | null;
           id: string;
+          media_type: string;
           platform: Database["public"]["Enums"]["platform_type"];
           published_at: string | null;
           scheduled_for: string | null;
@@ -683,6 +684,7 @@ export type Database = {
           hashtags?: string[] | null;
           hook?: string | null;
           id?: string;
+          media_type?: string;
           platform: Database["public"]["Enums"]["platform_type"];
           published_at?: string | null;
           scheduled_for?: string | null;
@@ -704,6 +706,7 @@ export type Database = {
           hashtags?: string[] | null;
           hook?: string | null;
           id?: string;
+          media_type?: string;
           platform?: Database["public"]["Enums"]["platform_type"];
           published_at?: string | null;
           scheduled_for?: string | null;
@@ -969,7 +972,7 @@ export type Database = {
       };
     };
     Enums: {
-      asset_type: "generated_image" | "uploaded_image" | "template_image";
+      asset_type: "generated_image" | "uploaded_image" | "template_image" | "uploaded_video";
       cost_cycle: "one_time" | "daily" | "weekly" | "monthly" | "yearly";
       metric_period: "daily" | "weekly" | "monthly" | "yearly";
       platform_type:

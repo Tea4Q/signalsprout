@@ -4,7 +4,9 @@
  * Called by the Inngest `publish-scheduled-post` function after sleeping
  * until the post's scheduled_for time.  Also called directly by publish-now.
  *
- * Uses the TikTok Content Posting API v2 (photo posts via PULL_FROM_URL).
+ * Supports two media types via the TikTok Content Posting API v2:
+ *   image  → PHOTO  (up to 35 images, PULL_FROM_URL carousel)
+ *   video  → VIDEO  (single file, PULL_FROM_URL)
  *
  * ⚠️  SANDBOX NOTE: The Content Posting API requires TikTok app review before
  *     production use.  Until approved, only the developer's own TikTok account
@@ -14,7 +16,7 @@
  * Flow per job:
  *  1. Fetch access token from social_accounts.
  *  2. Get signed URL(s) for the post asset(s) from Supabase Storage.
- *  3. POST /v2/post/publish/content/init/ to initiate a photo post.
+ *  3. POST /v2/post/publish/content/init/ to initiate the post.
  *  4. Poll /v2/post/publish/status/fetch/ until PUBLISH_COMPLETE or FAILED.
  *  5. Update posts, publish_jobs, and audit_logs.
  */
@@ -54,8 +56,9 @@ Deno.serve(async (_req: Request) => {
         caption,
         hashtags,
         hook,
+        media_type,
         social_account_id,
-        post_assets ( asset_id, sort_order, assets ( file_path ) )
+        post_assets ( asset_id, sort_order, assets ( file_path, mime_type ) )
       )
     `,
     )
@@ -111,35 +114,65 @@ Deno.serve(async (_req: Request) => {
       ].filter(Boolean);
       const captionText = captionParts.join(" ").slice(0, 2_200);
 
-      // ── Gather image URLs (TikTok supports up to 35 photos per post) ──────
+      // ── Gather asset(s) from storage ──────────────────────────────────────
 
       const postAssets =
         (post.post_assets as Array<{
           sort_order: number;
-          assets: { file_path: string } | null;
+          assets: { file_path: string; mime_type: string | null } | null;
         }> | null) ?? [];
       postAssets.sort((a, b) => a.sort_order - b.sort_order);
 
       if (postAssets.length === 0) {
-        throw new Error("TikTok posts require at least one image");
+        throw new Error("TikTok posts require at least one media asset");
       }
 
-      const photoImages: string[] = [];
-      for (const pa of postAssets) {
-        if (!pa.assets) continue;
+      const isVideo = (post.media_type as string) === "video";
+
+      // ── Build source_info based on media type ─────────────────────────────
+
+      let sourceInfo: Record<string, unknown>;
+      let tiktokMediaType: "PHOTO" | "VIDEO";
+
+      if (isVideo) {
+        // Video: single file via PULL_FROM_URL
+        const primaryAsset = postAssets[0]?.assets;
+        if (!primaryAsset) throw new Error("No video asset found on post");
         const { data: urlData } = await serviceClient.storage
           .from("assets")
-          .createSignedUrl(pa.assets.file_path, 3_600);
+          .createSignedUrl(primaryAsset.file_path, 3_600);
         if (!urlData?.signedUrl) {
           throw new Error(
-            `Failed to generate signed URL for asset: ${pa.assets.file_path}`,
+            `Failed to generate signed URL for video asset: ${primaryAsset.file_path}`,
           );
         }
-        photoImages.push(urlData.signedUrl);
-        if (photoImages.length >= 35) break; // TikTok max
+        sourceInfo = { source: "PULL_FROM_URL", video_url: urlData.signedUrl };
+        tiktokMediaType = "VIDEO";
+      } else {
+        // Photo carousel: up to 35 images
+        const photoImages: string[] = [];
+        for (const pa of postAssets) {
+          if (!pa.assets) continue;
+          const { data: urlData } = await serviceClient.storage
+            .from("assets")
+            .createSignedUrl(pa.assets.file_path, 3_600);
+          if (!urlData?.signedUrl) {
+            throw new Error(
+              `Failed to generate signed URL for asset: ${pa.assets.file_path}`,
+            );
+          }
+          photoImages.push(urlData.signedUrl);
+          if (photoImages.length >= 35) break;
+        }
+        sourceInfo = {
+          source: "PULL_FROM_URL",
+          photo_images: photoImages,
+          photo_cover_index: 0,
+        };
+        tiktokMediaType = "PHOTO";
       }
 
-      // ── Initiate photo post via Content Posting API v2 ────────────────────
+      // ── Initiate post via Content Posting API v2 ──────────────────────────
 
       const initRes = await fetch(`${TIKTOK_BASE}/post/publish/content/init/`, {
         method: "POST",
@@ -153,13 +186,9 @@ Deno.serve(async (_req: Request) => {
             privacy_level: "PUBLIC_TO_EVERYONE",
             disable_comment: false,
           },
-          source_info: {
-            source: "PULL_FROM_URL",
-            photo_images: photoImages,
-            photo_cover_index: 0,
-          },
+          source_info: sourceInfo,
           post_mode: "DIRECT_POST",
-          media_type: "PHOTO",
+          media_type: tiktokMediaType,
         }),
       });
 
@@ -244,6 +273,7 @@ Deno.serve(async (_req: Request) => {
           entity_id: post.id as string,
           metadata: {
             platform: "tiktok",
+            media_type: post.media_type as string,
             publish_id: publishId,
             external_post_id: externalPostId,
             publish_job_id: job.id,

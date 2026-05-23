@@ -205,8 +205,10 @@ export default function SocialAccountsScreen() {
 
         // Parse code / access_token + state from the redirect URL.
         // Facebook Business Login may use implicit flow (access_token in hash).
+        // Facebook also uses a legacy #_=_? prefix — strip it before parsing.
         const url = new URL(result.url);
-        const hashFragment = url.hash.replace(/^#/, "");
+        let hashFragment = url.hash.replace(/^#/, "");
+        if (hashFragment.startsWith("_=_?")) hashFragment = hashFragment.slice(4);
         const hashParams = new URLSearchParams(hashFragment);
         const returnedState = url.searchParams.get("state") ?? hashParams.get("state");
         const code = url.searchParams.get("code") ?? hashParams.get("code");

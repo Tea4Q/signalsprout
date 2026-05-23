@@ -31,8 +31,14 @@ export default function OAuthCallbackPage() {
         // Facebook Business Login (config_id) can return either:
         //   • code in the query string  (code flow — preferred)
         //   • access_token in the hash  (implicit flow — Business Login default)
+        // Facebook also uses a legacy #_=_? prefix before the real params.
         // Check both locations for both values.
-        const hashParams = new URLSearchParams(hash.replace(/^#/, ""));
+        let hashString = hash.replace(/^#/, "");
+        // Strip Facebook's legacy fragment prefix: #_=_?code=…  →  code=…
+        if (hashString.startsWith("_=_?")) {
+          hashString = hashString.slice(4);
+        }
+        const hashParams = new URLSearchParams(hashString);
         const code = params.get("code") ?? hashParams.get("code");
         const accessToken = hashParams.get("access_token"); // implicit flow
         const state = params.get("state") ?? hashParams.get("state");

@@ -1,12 +1,14 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -28,6 +30,8 @@ import { uploadExternalImage,
 import { AssetPickerSheet } from "@/components/assets/AssetPickerSheet";
 import { AppButton } from "@/components/ui/AppButton";
 import { AppInput } from "@/components/ui/AppInput";
+import { AppSelect, SelectOption } from "@/components/ui/AppSelect";
+import { supabase } from "@/lib/supabase";
 
 const TOTAL_STEPS = 4;
 
@@ -64,8 +68,28 @@ export default function CreatePostModal() {
   const [error, setError] = useState<string | null>(null);
   const [isScheduled, setIsScheduled] = useState(false);
   const [scheduledFor, setScheduledFor] = useState("");
+  const [socialAccountId, setSocialAccountId] = useState<string | null>(null);
+  const [socialAccounts, setSocialAccounts] = useState<SelectOption[]>([]);
+  const [pinTitle, setPinTitle] = useState("");
+  const [newHashtag, setNewHashtag] = useState("");
 
   const s = styles(colors);
+
+  // ── Step 4: load social accounts for the selected platform ───────────────
+  useEffect(() => {
+    if (step !== 4 || !workspaceId) return;
+    supabase
+      .from("social_accounts")
+      .select("id, account_name, platform")
+      .eq("workspace_id", workspaceId)
+      .eq("platform", form.platform)
+      .eq("status", "active")
+      .then(({ data }) => {
+        const opts = (data ?? []).map((a) => ({ label: a.account_name, value: a.id }));
+        setSocialAccounts(opts);
+        if (opts.length === 1) setSocialAccountId(opts[0].value);
+      });
+  }, [step, workspaceId, form.platform]);
 
   // ── Step 1 → Step 2: generate content ──────────────────────────────────────
   const handleGenerate = useCallback(async () => {
@@ -168,8 +192,9 @@ export default function CreatePostModal() {
 
   // ── Step 3 → Step 4: review ───────────────────────────────────────────────
   const handleToReview = useCallback(() => {
+    setPinTitle(content?.pin_title ?? "");
     setStep(4);
-  }, []);
+  }, [content]);
 
   // ── Step 4: save (draft or scheduled) ────────────────────────────────────
   const handleSave = useCallback(async (schedule: boolean) => {
@@ -203,10 +228,11 @@ export default function CreatePostModal() {
         hook: content?.hook ?? null,
         caption,
         hashtags,
-        title: form.platform === "pinterest" ? (content?.pin_title ?? null) : null,
+        title: form.platform === "pinterest" ? (pinTitle.trim() || null) : null,
         destination_url: destinationUrl.trim() || null,
         status: schedule ? "scheduled" : "draft",
         scheduled_for: scheduledAt,
+        social_account_id: socialAccountId ?? null,
       });
       if (image) {
         await linkPostAsset(post.id, image.asset_id);
@@ -223,11 +249,15 @@ export default function CreatePostModal() {
     } finally {
       setSaving(false);
     }
-  }, [form, workspaceId, content, caption, hashtags, destinationUrl, image, isCharacterRef, scheduledFor, router]);
+  }, [form, workspaceId, content, caption, hashtags, pinTitle, destinationUrl, image, isCharacterRef, scheduledFor, socialAccountId, router]);
 
   // ── Step 4: publish immediately ───────────────────────────────────────────
   const handlePublishNow = useCallback(async () => {
     if (!workspaceId) return;
+    if (!socialAccountId) {
+      setError("Please select a social account before publishing.");
+      return;
+    }
     setError(null);
     setPublishing(true);
     try {
@@ -238,10 +268,11 @@ export default function CreatePostModal() {
         hook: content?.hook ?? null,
         caption,
         hashtags,
-        title: form.platform === "pinterest" ? (content?.pin_title ?? null) : null,
+        title: form.platform === "pinterest" ? (pinTitle.trim() || null) : null,
         destination_url: destinationUrl.trim() || null,
         status: "approved",
         scheduled_for: null,
+        social_account_id: socialAccountId,
       });
       if (image) {
         await linkPostAsset(post.id, image.asset_id);
@@ -256,7 +287,7 @@ export default function CreatePostModal() {
     } finally {
       setPublishing(false);
     }
-  }, [form, workspaceId, content, caption, hashtags, destinationUrl, image, isCharacterRef, router]);
+  }, [form, workspaceId, content, caption, hashtags, pinTitle, destinationUrl, image, isCharacterRef, socialAccountId, router]);
 
   const handleBack = () => {
     if (step > 1) setStep((s) => s - 1);
@@ -265,6 +296,14 @@ export default function CreatePostModal() {
 
   const removeHashtag = (tag: string) =>
     setHashtags((prev) => prev.filter((t) => t !== tag));
+
+  const handleAddHashtag = useCallback(() => {
+    const tag = newHashtag.trim().replace(/^#+/, "");
+    if (!tag) return;
+    const formatted = `#${tag}`;
+    setHashtags((prev) => (prev.includes(formatted) ? prev : [...prev, formatted]));
+    setNewHashtag("");
+  }, [newHashtag]);
 
   return (
     <SafeAreaView style={s.safeArea}>
@@ -497,16 +536,168 @@ export default function CreatePostModal() {
           </View>
         )}
 
-        {/* ── Step 4: Review & Save ── */}
+        {/* ── Step 4: Review & Edit ── */}
         {step === 4 && (
           <View style={{ gap: spacing.xl }}>
-            {/* Summary */}
-            <View style={s.summaryCard}>
-              <SummaryRow label="Platform" value={form.platform} />
-              <SummaryRow label="Caption length" value={`${caption.length} characters`} />
-              <SummaryRow label="Hashtags" value={`${hashtags.length} tags`} />
-              {image && <SummaryRow label="Image" value="Attached" />}
+            {/* Platform card preview with inline editing */}
+            <View style={s.pinCard}>
+              {/* Card header */}
+              <View style={s.pinCardHeader}>
+                <View style={[s.platformDot, {
+                  backgroundColor: form.platform === "pinterest" ? "#E60023"
+                    : form.platform === "instagram" ? "#C13584"
+                    : colors.primary,
+                }]} />
+                <Text style={{ ...typography.micro, color: colors.textMuted, textTransform: "uppercase", fontWeight: "600", letterSpacing: 0.8 }}>
+                  {form.platform === "pinterest" ? "Pinterest Pin Preview"
+                    : form.platform === "instagram" ? "Instagram Post Preview"
+                    : `${form.platform.charAt(0).toUpperCase()}${form.platform.slice(1)} Post Preview`}
+                </Text>
+                {(generatingImage || uploadingImage) && (
+                  <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: "auto" }} />
+                )}
+              </View>
+
+              {/* Image area */}
+              <View style={[s.pinImageArea, {
+                aspectRatio: form.platform === "pinterest" ? 2 / 3 : 4 / 5,
+              }]}>
+                {image?.public_url ? (
+                  <Image
+                    source={{ uri: image.public_url }}
+                    style={{ width: "100%", height: "100%" }}
+                    resizeMode="cover"
+                    accessibilityLabel="Post image preview"
+                  />
+                ) : (
+                  <View style={s.pinImagePlaceholder}>
+                    <Text style={{ fontSize: 36 }}>🖼️</Text>
+                    <Text style={{ ...typography.caption, color: colors.textMuted, marginTop: spacing.xs }}>
+                      No image
+                    </Text>
+                  </View>
+                )}
+                <View style={s.imageOverlay}>
+                  <Pressable
+                    style={s.imageOverlayBtn}
+                    onPress={handleRegenerateImage}
+                    disabled={generatingImage || uploadingImage}
+                    accessibilityLabel="Regenerate image"
+                  >
+                    <Text style={{ ...typography.micro, color: "#fff", fontWeight: "600" }}>
+                      {generatingImage ? "…" : "↺ Regen"}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={s.imageOverlayBtn}
+                    onPress={handleUploadImage}
+                    disabled={generatingImage || uploadingImage}
+                    accessibilityLabel="Upload different image"
+                  >
+                    <Text style={{ ...typography.micro, color: "#fff", fontWeight: "600" }}>↑ Upload</Text>
+                  </Pressable>
+                </View>
+              </View>
+
+              {/* Editable content area */}
+              <View style={s.pinContent}>
+                {/* Pin Title — Pinterest only */}
+                {form.platform === "pinterest" && (
+                  <View style={s.pinFieldGroup}>
+                    <Text style={{ ...typography.micro, color: colors.textMuted, textTransform: "uppercase", fontWeight: "600", letterSpacing: 0.6, marginBottom: spacing.xs }}>
+                      Pin Title
+                    </Text>
+                    <TextInput
+                      style={[s.pinTitleInput, { color: colors.textPrimary, borderColor: colors.border }]}
+                      value={pinTitle}
+                      onChangeText={setPinTitle}
+                      placeholder="Enter pin title…"
+                      placeholderTextColor={colors.textMuted}
+                    />
+                  </View>
+                )}
+
+                {/* Caption */}
+                <View style={s.pinFieldGroup}>
+                  <Text style={{ ...typography.micro, color: colors.textMuted, textTransform: "uppercase", fontWeight: "600", letterSpacing: 0.6, marginBottom: spacing.xs }}>
+                    Caption
+                  </Text>
+                  <TextInput
+                    style={[s.pinCaptionInput, { color: colors.textPrimary, borderColor: colors.border }]}
+                    value={caption}
+                    onChangeText={setCaption}
+                    multiline
+                    placeholder="Write a caption…"
+                    placeholderTextColor={colors.textMuted}
+                    textAlignVertical="top"
+                  />
+                </View>
+
+                {/* Hashtags */}
+                <View style={s.pinFieldGroup}>
+                  <Text style={{ ...typography.micro, color: colors.textMuted, textTransform: "uppercase", fontWeight: "600", letterSpacing: 0.6, marginBottom: spacing.xs }}>
+                    Hashtags
+                  </Text>
+                  {hashtags.length > 0 && (
+                    <View style={s.hashtagRow}>
+                      {hashtags.map((tag) => (
+                        <Pressable key={tag} onPress={() => removeHashtag(tag)} style={[s.hashtagPill, { backgroundColor: colors.secondarySoft }]} accessibilityLabel={`Remove ${tag}`}>
+                          <Text style={{ ...typography.micro, color: colors.secondary }}>{tag} ×</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  )}
+                  <View style={s.addHashtagRow}>
+                    <View style={{ flex: 1 }}>
+                      <AppInput
+                        label=""
+                        value={newHashtag}
+                        onChangeText={setNewHashtag}
+                        placeholder="Add hashtag…"
+                        autoCapitalize="none"
+                        returnKeyType="done"
+                        onSubmitEditing={handleAddHashtag}
+                      />
+                    </View>
+                    <Pressable
+                      style={[s.addHashtagBtn, { backgroundColor: colors.primarySoft }]}
+                      onPress={handleAddHashtag}
+                      accessibilityLabel="Add hashtag"
+                    >
+                      <Text style={{ ...typography.h3, color: colors.primary, lineHeight: 24 }}>+</Text>
+                    </Pressable>
+                  </View>
+                </View>
+
+                {/* Destination URL */}
+                <AppInput
+                  label={form.platform === "pinterest" ? "Destination URL (optional)" : "Link in Bio URL (optional)"}
+                  value={destinationUrl}
+                  onChangeText={setDestinationUrl}
+                  placeholder="https://"
+                  keyboardType="url"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
             </View>
+
+            {/* Social account picker */}
+            {socialAccounts.length > 0 ? (
+              <AppSelect
+                label={`${form.platform.charAt(0).toUpperCase()}${form.platform.slice(1)} Account`}
+                value={socialAccountId}
+                options={socialAccounts}
+                onChange={setSocialAccountId}
+                placeholder="Select account to publish to"
+              />
+            ) : (
+              <View style={[s.infoBox, { borderColor: colors.warning + "66", backgroundColor: colors.accentSoft }]}>
+                <Text style={{ ...typography.caption, color: colors.warning }}>
+                  No {form.platform} account connected. Go to Social Accounts to connect one.
+                </Text>
+              </View>
+            )}
 
             {/* Schedule toggle */}
             <View style={s.scheduleRow}>
@@ -540,7 +731,7 @@ export default function CreatePostModal() {
               <AppButton
                 label={publishing ? "Publishing…" : "Publish Now"}
                 onPress={handlePublishNow}
-                disabled={publishing || saving}
+                disabled={publishing || saving || !socialAccountId}
                 loading={publishing}
               />
               {isScheduled ? (
@@ -650,6 +841,97 @@ function styles(colors: any) {
       borderWidth: 1,
       borderColor: colors.border,
       gap: spacing.md,
+    },
+    // ── Pin card styles ──────────────────────────────────────────────────────
+    pinCard: {
+      backgroundColor: colors.surface,
+      borderRadius: radius["2xl"],
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: "hidden",
+    },
+    pinCardHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm,
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.md,
+      paddingBottom: spacing.sm,
+    },
+    platformDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    pinImageArea: {
+      width: "100%",
+      backgroundColor: colors.surfaceAlt,
+      position: "relative",
+    },
+    pinImagePlaceholder: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      padding: spacing["3xl"],
+    },
+    imageOverlay: {
+      position: "absolute",
+      bottom: spacing.sm,
+      right: spacing.sm,
+      flexDirection: "row",
+      gap: spacing.xs,
+    },
+    imageOverlayBtn: {
+      backgroundColor: "rgba(0,0,0,0.55)",
+      borderRadius: radius.sm,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+    },
+    pinContent: {
+      padding: spacing.lg,
+      gap: spacing.lg,
+    },
+    pinFieldGroup: {
+      gap: spacing.xs,
+    },
+    pinTitleInput: {
+      fontSize: 20,
+      fontWeight: "700" as const,
+      borderBottomWidth: 1,
+      paddingVertical: spacing.xs,
+      paddingHorizontal: 0,
+    },
+    pinCaptionInput: {
+      fontSize: 14,
+      lineHeight: 20,
+      borderWidth: 1,
+      borderRadius: radius.md,
+      padding: spacing.sm,
+      minHeight: 80,
+    },
+    hashtagRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: spacing.xs,
+      marginBottom: spacing.xs,
+    },
+    hashtagPill: {
+      borderRadius: 100,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 3,
+    },
+    addHashtagRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm,
+    },
+    addHashtagBtn: {
+      width: 44,
+      height: 44,
+      borderRadius: radius.md,
+      alignItems: "center",
+      justifyContent: "center",
+      marginTop: 2,
     },
   });
 }

@@ -78,6 +78,14 @@ Deno.serve(async (req: Request) => {
       console.error("Storage delete failed:", storageError.message);
     }
 
+    // Remove post_asset join rows first (FK constraint would otherwise block deletion)
+    const { error: joinError } = await serviceClient
+      .from("post_assets")
+      .delete()
+      .eq("asset_id", asset_id);
+
+    if (joinError) throw joinError;
+
     const { error: dbError } = await serviceClient
       .from("assets")
       .delete()

@@ -126,6 +126,8 @@ supabase secrets set FACEBOOK_CLIENT_SECRET=<meta-app-secret>
 
 > **Note:** SignalSprout publishes to the Page's feed and photo albums. Personal profiles are not supported.
 
+> **Legacy redirect hash:** Older Facebook OAuth flows appended `#_=_?` to the redirect URL. SignalSprout's callback handler strips this fragment automatically, so no manual configuration is needed.
+
 ---
 
 ## TikTok
@@ -198,6 +200,17 @@ The Content Posting API requires **TikTok app review** before posts can reach re
 Submit for review at: https://developers.tiktok.com/products/content-posting-api/
 
 Expected review time: 1–4 weeks.
+
+### Video Upload Limits
+
+SignalSprout enforces these limits when uploading a video for a TikTok post:
+
+| Constraint | Limit |
+|---|---|
+| Max file size | 500 MB |
+| Max duration (picker) | 10 minutes (600 s) |
+
+> To post the same video to **both TikTok and Instagram Reels**, keep the video under **90 seconds** — the Instagram Reels hard cap.
 
 ---
 
@@ -320,3 +333,5 @@ supabase secrets set X_CLIENT_SECRET=<x-client-secret>
 | "Social account not found" on publish | Account disconnected or token expired | Reconnect the account in Social Accounts |
 | TikTok posts don't appear publicly | App not approved for Content Posting API | Submit for app review at developers.tiktok.com |
 | Facebook "Page not found in user's pages" | Wrong Page ID or missing admin access | Verify `external_account_id` is the Page ID and the connected user has Page admin role |
+| Facebook OAuth finishes but account doesn't save | Legacy `#_=_?` hash in redirect URL | No action needed — SignalSprout strips this fragment automatically since the May 2026 update |
+| Facebook connect shows "Invalid `response_type`" | OAuth flow requested token instead of code | No action needed — fixed in the May 2026 update; clear cache and reconnect |

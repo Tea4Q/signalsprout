@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Pressable,
   RefreshControl,
@@ -107,10 +108,14 @@ export default function AssetsScreen() {
       setDeleteError(null);
       try {
         await deleteAsset(assetId);
+        // Optimistic: remove immediately so the list updates even if reload fails
+        setAssets((prev) => prev.filter((a) => a.id !== assetId));
         closeSheet();
-        await load(true);
+        load(true); // refresh in background; no await so errors don't bubble here
       } catch (e) {
-        setDeleteError(e instanceof Error ? e.message : "Failed to delete asset.");
+        const msg = e instanceof Error ? e.message : "Failed to delete asset.";
+        setDeleteError(msg);
+        Alert.alert("Delete Failed", msg);
       } finally {
         setDeleting(false);
       }

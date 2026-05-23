@@ -40,23 +40,28 @@ export async function getAssetsWithUsage(
 }
 
 export async function deleteAsset(assetId: string): Promise<void> {
-  // Deletion is routed through an edge function so the service role can
-  // remove the storage object (uploaded via service role, unreachable by
-  // client-side RLS) while still enforcing workspace membership via RLS.
-  const { error } = await supabase.functions.invoke("delete-asset", {
-    body: { asset_id: assetId },
-  });
-  if (error) {
-    let message = error.message;
-    try {
-      const ctx = (error as { context?: unknown }).context;
-      if (ctx && typeof (ctx as Response).json === "function") {
-        const body = await (ctx as Response).json() as { error?: string };
-        if (body?.error) message = body.error;
-      }
-    } catch { /* ignore — use original message */ }
-    throw new Error(message);
+  // Fetch file_path before deleting (needed for storage cleanup).
+  const { data: asset, error: fetchError } = await supabase
+    .from("assets")
+    .select("file_path")
+    .eq("id", assetId)
+    .single();
+
+  if (fetchError || !asset) {
+    throw new Error("Asset not found or access denied.");
   }
+
+  // Delete the DB record. post_assets rows cascade automatically via FK.
+  const { error: dbError } = await supabase
+    .from("assets")
+    .delete()
+    .eq("id", assetId);
+
+  if (dbError) throw dbError;
+
+  // Best-effort storage cleanup — don't fail the operation if the file
+  // is already gone or the RLS policy can't match the path.
+  await supabase.storage.from("assets").remove([asset.file_path]);
 }
 
 export function getAssetPublicUrl(filePath: string): string {

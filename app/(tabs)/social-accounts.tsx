@@ -7,6 +7,8 @@ import { PLATFORM_LIST, type PlatformId } from "@/lib/platforms/config";
 import { supabase } from "@/lib/supabase";
 import { FacebookSetupModal } from "@/components/social/FacebookSetupModal";
 import { InstagramSetupModal } from "@/components/social/InstagramSetupModal";
+import { AppButton } from "@/components/ui/AppButton";
+import { AppModal } from "@/components/ui/AppModal";
 import {
   disconnectSocialAccount,
   listSocialAccounts,
@@ -18,7 +20,6 @@ import * as WebBrowser from "expo-web-browser";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Platform,
   RefreshControl,
   ScrollView,
@@ -70,6 +71,7 @@ export default function SocialAccountsScreen() {
   // Track which platform is mid-connect and which is mid-disconnect
   const [connecting, setConnecting] = useState<PlatformId | null>(null);
   const [disconnecting, setDisconnecting] = useState<string | null>(null); // accountId
+  const [confirmAccount, setConfirmAccount] = useState<SocialAccount | null>(null);
   const [instagramSetupVisible, setInstagramSetupVisible] = useState(false);
   const [facebookSetupVisible, setFacebookSetupVisible] = useState(false);
   const connectingRef = useRef(false);
@@ -289,33 +291,26 @@ export default function SocialAccountsScreen() {
 
   const handleDisconnect = useCallback(
     (account: SocialAccount) => {
-      const doDisconnect = async () => {
-        setDisconnecting(account.id);
-        try {
-          await disconnectSocialAccount(account.id);
-          showToast(`${account.account_name} disconnected`, "info");
-          load(true);
-        } catch (e) {
-          showToast(
-            e instanceof Error ? e.message : "Failed to disconnect",
-            "error",
-          );
-        } finally {
-          setDisconnecting(null);
-        }
-      };
-
-      Alert.alert(
-        "Disconnect account",
-        `Remove the ${account.account_name} connection? Posts already scheduled will not be affected.`,
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "Disconnect", style: "destructive", onPress: doDisconnect },
-        ],
-      );
+      setConfirmAccount(account);
     },
-    [showToast, load],
+    [],
   );
+
+  const doDisconnect = useCallback(async () => {
+    if (!confirmAccount) return;
+    const account = confirmAccount;
+    setConfirmAccount(null);
+    setDisconnecting(account.id);
+    try {
+      await disconnectSocialAccount(account.id);
+      showToast(`${account.account_name} disconnected`, "info");
+      load(true);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Failed to disconnect", "error");
+    } finally {
+      setDisconnecting(null);
+    }
+  }, [confirmAccount, showToast, load]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -408,6 +403,25 @@ export default function SocialAccountsScreen() {
           setTimeout(() => doOAuthConnect("facebook"), 0);
         }}
       />
+      <AppModal
+        visible={!!confirmAccount}
+        onClose={() => setConfirmAccount(null)}
+        title="Disconnect account"
+      >
+        <Text style={{ ...typography.body, color: colors.textSecondary, marginBottom: spacing.lg }}>
+          {`Remove the ${confirmAccount?.account_name} connection? Posts already scheduled will not be affected.`}
+        </Text>
+        <AppButton
+          label="Disconnect"
+          variant="destructive"
+          onPress={doDisconnect}
+        />
+        <AppButton
+          label="Cancel"
+          variant="secondary"
+          onPress={() => setConfirmAccount(null)}
+        />
+      </AppModal>
     </SafeAreaView>
   );
 }

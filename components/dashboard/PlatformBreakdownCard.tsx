@@ -15,6 +15,7 @@ export function PlatformBreakdownCard({
   const { colors } = useTheme();
 
   const instagram = platforms.find((p) => p.platform === "instagram");
+  const facebook = platforms.find((p) => p.platform === "facebook");
   const pinterest = platforms.find((p) => p.platform === "pinterest");
 
   return (
@@ -38,6 +39,7 @@ export function PlatformBreakdownCard({
         <View style={{ flexDirection: "row", gap: spacing.lg }}>
           {[
             { label: "Instagram", data: instagram, color: colors.info },
+            { label: "Facebook", data: facebook, color: colors.primary },
             { label: "Pinterest", data: pinterest, color: colors.danger },
           ].map(({ label, data, color }) => (
             <View key={label} style={{ flex: 1, gap: spacing.xs }}>

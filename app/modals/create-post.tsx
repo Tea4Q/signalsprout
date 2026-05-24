@@ -77,7 +77,6 @@ export default function CreatePostModal() {
   const [socialAccounts, setSocialAccounts] = useState<SelectOption[]>([]);
   const [pinTitle, setPinTitle] = useState("");
   const [newHashtag, setNewHashtag] = useState("");
-  const [imagePrompt, setImagePrompt] = useState("");
 
   const s = styles(colors);
 
@@ -148,25 +147,14 @@ export default function CreatePostModal() {
     }
   }, [step, form.brand_id]);
 
-  // ── Step 2: pre-fill image prompt as soon as AI content is generated ──────
-  React.useEffect(() => {
-    if (content?.image_prompt) {
-      setImagePrompt(content.image_prompt);
-    }
-  }, [content?.image_prompt]);
-
-  // ── Step 3: generate / regenerate image ─────────────────────────────────
+  // ── Step 3: generate image ────────────────────────────────────────────────
   const handleGenerateImage = useCallback(async () => {
-    if (!workspaceId) return;
-    if (!imagePrompt.trim()) {
-      setError("Please enter an image prompt.");
-      return;
-    }
+    if (!workspaceId || !content) return;
     setError(null);
     setGeneratingImage(true);
     try {
       const result = await generateImage(
-        imagePrompt.trim(),
+        content.image_prompt,
         form.platform,
         form.brand_id,
         workspaceId,
@@ -177,19 +165,15 @@ export default function CreatePostModal() {
     } finally {
       setGeneratingImage(false);
     }
-  }, [imagePrompt, form.platform, form.brand_id, workspaceId]);
+  }, [content, form.platform, form.brand_id, workspaceId]);
 
   const handleRegenerateImage = useCallback(async () => {
-    if (!workspaceId) return;
-    if (!imagePrompt.trim()) {
-      setError("Please enter an image prompt.");
-      return;
-    }
+    if (!workspaceId || !content) return;
     setError(null);
     setGeneratingImage(true);
     try {
       const result = await generateImage(
-        imagePrompt.trim(),
+        content.image_prompt,
         form.platform,
         form.brand_id,
         workspaceId,
@@ -200,7 +184,7 @@ export default function CreatePostModal() {
     } finally {
       setGeneratingImage(false);
     }
-  }, [imagePrompt, form.platform, form.brand_id, workspaceId]);
+  }, [content, form.platform, form.brand_id, workspaceId]);
 
   // ── Step 3: upload video from device ─────────────────────────────────────
   const handleUploadVideo = useCallback(async () => {
@@ -479,13 +463,17 @@ export default function CreatePostModal() {
               autoCorrect={false}
             />
 
-            {/* Image prompt — editable so the user can tweak before generating */}
-            <AppInput
-              label="Image Prompt"
-              value={imagePrompt}
-              onChangeText={setImagePrompt}
-              placeholder="Describe the image to generate…"
-            />
+            {/* Image prompt preview */}
+            <View style={{ gap: spacing.xs }}>
+              <Text style={{ ...typography.caption, color: colors.textSecondary }}>
+                Suggested Image Prompt
+              </Text>
+              <View style={s.infoBox}>
+                <Text style={{ ...typography.caption, color: colors.textSecondary, fontStyle: "italic" }}>
+                  {content.image_prompt}
+                </Text>
+              </View>
+            </View>
 
             <AppButton label="Continue to Image" onPress={handleToImageStep} />
           </View>
@@ -535,43 +523,44 @@ export default function CreatePostModal() {
                   platform={form.platform}
                   loading={generatingImage}
                 />
-                <AppInput
-                  label="Image Prompt"
-                  value={imagePrompt}
-                  onChangeText={setImagePrompt}
-                  placeholder="Describe the image to generate…"
-                />
-                <View style={{ flexDirection: "row", gap: spacing.sm }}>
-                  <View style={{ flex: 1 }}>
+
+                {!image ? (
+                  <View style={{ gap: spacing.md }}>
                     <AppButton
-                      label={generatingImage ? "Generating…" : image ? "Regenerate" : "Generate"}
+                      label={generatingImage ? "Generating Image…" : "Generate Image"}
                       onPress={handleGenerateImage}
-                      disabled={generatingImage || uploadingImage || !imagePrompt.trim()}
-                      loading={generatingImage}
-                      variant={image ? "secondary" : "primary"}
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <AppButton
-                      label={uploadingImage ? "Uploading…" : "Upload Image"}
-                      onPress={handleUploadImage}
                       disabled={generatingImage || uploadingImage}
+                      loading={generatingImage}
+                    />
+                    <AppButton
+                      label={uploadingImage ? "Uploading…" : "Upload from Device"}
+                      onPress={handleUploadImage}
+                      disabled={uploadingImage || generatingImage}
                       loading={uploadingImage}
                       variant="secondary"
                     />
                   </View>
-                </View>
-                <AppButton
-                  label="Use from Library"
-                  onPress={() => setShowLibraryPicker(true)}
-                  disabled={generatingImage || uploadingImage}
-                  variant="secondary"
-                />
-                {image && (
-                  <AppButton
-                    label="Continue to Review"
-                    onPress={handleToReview}
-                  />
+                ) : (
+                  <View style={{ gap: spacing.md }}>
+                    <AppButton
+                      label="Continue to Review"
+                      onPress={handleToReview}
+                    />
+                    <AppButton
+                      label={generatingImage ? "Regenerating…" : "Regenerate"}
+                      onPress={handleRegenerateImage}
+                      disabled={generatingImage || uploadingImage}
+                      loading={generatingImage}
+                      variant="secondary"
+                    />
+                    <AppButton
+                      label={uploadingImage ? "Uploading…" : "Upload Different Image"}
+                      onPress={handleUploadImage}
+                      disabled={uploadingImage || generatingImage}
+                      loading={uploadingImage}
+                      variant="secondary"
+                    />
+                  </View>
                 )}
 
                 {image && (

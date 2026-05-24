@@ -36,6 +36,17 @@ POST /v21.0/{ig-account-id}/media_publish
   → returns media_id (stored as posts.external_post_id)
 ```
 
+### Reels Video Constraints
+
+SignalSprout enforces these limits client-side before upload to surface clear errors rather than cryptic Graph API rejections:
+
+| Constraint | Limit | Enforced by |
+|---|---|---|
+| Video duration | 90 seconds maximum | `uploadVideo` in `assetService.ts` |
+| Video file size | 500 MB maximum | `uploadVideo` in `assetService.ts` |
+| Image dimensions | Resized to 1920 px max (longest side) | `resizeForUpload` helper |
+| Image compression | JPEG quality 0.82 | `resizeForUpload` helper |
+
 ### Fetching Metrics
 
 ```
@@ -250,6 +261,40 @@ Content-Type: application/json; charset=UTF-8
 `publicaly_available_post_id[0]` (note TikTok's typo) is stored as `posts.external_post_id`.
 
 SignalSprout polls up to 5 times with 3-second intervals. If the status is still processing after 5 polls, the `publish_id` is stored as a best-effort ID — TikTok continues processing in the background.
+
+### Initiating a Video Post
+
+```
+POST https://open.tiktokapis.com/v2/post/publish/video/init/
+Authorization: Bearer {access_token}
+Content-Type: application/json; charset=UTF-8
+
+{
+  "post_info": {
+    "title": "{caption}",
+    "privacy_level": "PUBLIC_TO_EVERYONE",
+    "disable_comment": false
+  },
+  "source_info": {
+    "source": "PULL_FROM_URL",
+    "video_url": "{signed_url}"
+  },
+  "post_mode": "DIRECT_POST",
+  "media_type": "VIDEO"
+}
+
+→ { data: { publish_id: "..." }, error: { code: "ok" } }
+```
+
+Poll for status using the same `/v2/post/publish/status/fetch/` endpoint described under Photo Post above.
+
+### Video Upload Constraints
+
+| Constraint | Limit |
+|---|---|
+| Max file size | 500 MB |
+| Max duration (picker) | 10 minutes (600 s) |
+| Recommended for cross-platform (Reels + TikTok) | 90 seconds or less |
 
 ### Rate Limits
 

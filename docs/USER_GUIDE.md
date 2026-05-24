@@ -70,7 +70,7 @@ SignalSprout uses GPT-4o to generate a caption, hashtags, and hook line tailored
 
 You can regenerate the caption, edit it manually, or adjust the hashtag list before continuing.
 
-### Step 3 — Generate Image
+### Step 3 — Add Creative
 
 Generate an image with DALL·E 3 at the correct aspect ratio for the target platform:
 
@@ -81,7 +81,17 @@ Generate an image with DALL·E 3 at the correct aspect ratio for the target plat
 | TikTok | 9:16 (vertical) |
 | Pinterest | 2:3 (portrait) |
 
-You can regenerate, upload your own image from the device, or skip the image entirely for text-only posts (Facebook only).
+You can also **upload your own image** (auto-resized to a 1920 px max side and compressed before upload) or **upload a video** from your device library. For text-only posts (Facebook only) you can skip the creative entirely.
+
+#### Video upload limits
+
+| Constraint | Limit |
+|---|---|
+| Max duration (Instagram Reels) | 90 seconds |
+| Max duration (TikTok) | 10 minutes (600 seconds) |
+| Max file size | 500 MB |
+
+> If you plan to post to **both** Instagram and TikTok, keep videos under 90 seconds so they are accepted by both platforms.
 
 ### Step 4 — Schedule
 
@@ -240,6 +250,15 @@ Use the filter bar at the top to view:
 - **All** — everything in the library
 - **Generated** — images produced by DALL·E 3
 - **Uploaded** — images you uploaded manually
+- **Video** — videos uploaded from your device
+
+### Image Auto-Resize
+
+When you upload an image (via the Content Studio or directly to the library), SignalSprout automatically resizes it to a maximum of **1920 px** on the longest side and compresses it to reduce upload size. The original file on your device is not modified.
+
+### Deleting an Asset
+
+Tap any asset to open the detail sheet, then tap **Delete**. You will be asked to confirm. The asset is removed from the library and unlinked from any scheduled posts immediately.
 
 ### Using Assets in Posts
 

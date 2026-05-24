@@ -148,12 +148,12 @@ export default function CreatePostModal() {
     }
   }, [step, form.brand_id]);
 
-  // ── Step 3: pre-fill image prompt from AI-generated suggestion ───────────
+  // ── Step 2: pre-fill image prompt as soon as AI content is generated ──────
   React.useEffect(() => {
-    if (step === 3 && content?.image_prompt) {
+    if (content?.image_prompt) {
       setImagePrompt(content.image_prompt);
     }
-  }, [step]);
+  }, [content?.image_prompt]);
 
   // ── Step 3: generate / regenerate image ─────────────────────────────────
   const handleGenerateImage = useCallback(async () => {
@@ -479,17 +479,13 @@ export default function CreatePostModal() {
               autoCorrect={false}
             />
 
-            {/* Image prompt preview */}
-            <View style={{ gap: spacing.xs }}>
-              <Text style={{ ...typography.caption, color: colors.textSecondary }}>
-                Suggested Image Prompt
-              </Text>
-              <View style={s.infoBox}>
-                <Text style={{ ...typography.caption, color: colors.textSecondary, fontStyle: "italic" }}>
-                  {content.image_prompt}
-                </Text>
-              </View>
-            </View>
+            {/* Image prompt — editable so the user can tweak before generating */}
+            <AppInput
+              label="Image Prompt"
+              value={imagePrompt}
+              onChangeText={setImagePrompt}
+              placeholder="Describe the image to generate…"
+            />
 
             <AppButton label="Continue to Image" onPress={handleToImageStep} />
           </View>

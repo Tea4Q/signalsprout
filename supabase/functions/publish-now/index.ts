@@ -255,8 +255,35 @@ Deno.serve(async (req: Request) => {
         );
       }
 
-      const accessToken = account.access_token;
-      const pageId = account.external_account_id;
+      let pageId = account.external_account_id;
+      let pageAccessToken = account.access_token;
+
+      // Self-heal: if a User Access Token was stored by an old OAuth flow,
+      // /me/accounts succeeds and returns the Page tokens.  Page Access Tokens
+      // cannot call /me/accounts, so a failure means we already have a page token.
+      const accountsRes = await fetch(
+        `https://graph.facebook.com/v21.0/me/accounts?access_token=${encodeURIComponent(pageAccessToken)}`,
+      );
+      if (accountsRes.ok) {
+        const accountsData = await accountsRes.json();
+        const pages: Array<{ id: string; name: string; access_token: string }> =
+          accountsData.data ?? [];
+        if (pages.length > 0) {
+          const matched = pages.find((p) => p.id === pageId) ?? pages[0];
+          pageId = matched.id;
+          pageAccessToken = matched.access_token;
+          // Persist the corrected page credentials so future publishes don't need to re-heal
+          await svc
+            .from("social_accounts")
+            .update({
+              access_token: pageAccessToken,
+              external_account_id: pageId,
+              account_name: matched.name,
+            })
+            .eq("id", post.social_account_id);
+        }
+      }
+
       if (!pageId) {
         return new Response(
           JSON.stringify({ error: "Facebook page ID not configured on social account" }),
@@ -281,12 +308,12 @@ Deno.serve(async (req: Request) => {
           url: urlData.signedUrl,
           caption: captionText,
           published: "true",
-          access_token: accessToken,
+          access_token: pageAccessToken,
         });
         if (post.destination_url) photoParams.set("link", post.destination_url);
 
         const photoRes = await fetch(
-          `https://graph.facebook.com/v20.0/${pageId}/photos`,
+          `https://graph.facebook.com/v21.0/${pageId}/photos`,
           {
             method: "POST",
             headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -302,12 +329,12 @@ Deno.serve(async (req: Request) => {
         // Text-only feed post
         const feedParams = new URLSearchParams({
           message: captionText,
-          access_token: accessToken,
+          access_token: pageAccessToken,
         });
         if (post.destination_url) feedParams.set("link", post.destination_url);
 
         const feedRes = await fetch(
-          `https://graph.facebook.com/v20.0/${pageId}/feed`,
+          `https://graph.facebook.com/v21.0/${pageId}/feed`,
           {
             method: "POST",
             headers: { "Content-Type": "application/x-www-form-urlencoded" },

@@ -22,6 +22,7 @@ import { ScheduleForm } from "@/components/calendar/ScheduleForm";
 import { AppButton } from "@/components/ui/AppButton";
 import { AppInput } from "@/components/ui/AppInput";
 import { AppBadge, BadgeVariant } from "@/components/ui/AppBadge";
+import { AppSelect, SelectOption } from "@/components/ui/AppSelect";
 import {
   getPost,
   updatePost,
@@ -81,6 +82,7 @@ export default function EditPostModal() {
   const [isScheduled, setIsScheduled] = useState(false);
   const [scheduledFor, setScheduledFor] = useState<Date>(defaultScheduleDate());
   const [socialAccountId, setSocialAccountId] = useState<string | null>(null);
+  const [socialAccounts, setSocialAccounts] = useState<SelectOption[]>([]);
 
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -114,6 +116,20 @@ export default function EditPostModal() {
         setIsScheduled(scheduled);
         if (p.scheduled_for) setScheduledFor(new Date(p.scheduled_for));
         if (p.social_account_id) setSocialAccountId(p.social_account_id);
+
+        // Load social accounts for the post's platform
+        supabase
+          .from("social_accounts")
+          .select("id, account_name")
+          .eq("workspace_id", workspaceId ?? "")
+          .eq("platform", p.platform)
+          .eq("status", "active")
+          .then(({ data }) => {
+            const opts = (data ?? []).map((a) => ({ label: a.account_name, value: a.id }));
+            setSocialAccounts(opts);
+            // Auto-select if there's only one
+            if (!p.social_account_id && opts.length === 1) setSocialAccountId(opts[0].value);
+          });
 
         // Load existing post assets
         const { data: assetData } = await supabase
@@ -636,7 +652,18 @@ export default function EditPostModal() {
 
             <View style={{ height: spacing.xl }} />
 
-            {/* Schedule toggle */}
+            {/* Social account — always visible so Post Now works without scheduling */}
+            <AppSelect
+              label={`${post.platform.charAt(0).toUpperCase() + post.platform.slice(1)} Account`}
+              value={socialAccountId}
+              options={socialAccounts}
+              onChange={setSocialAccountId}
+              placeholder="Select account"
+            />
+
+            <View style={{ height: spacing.xl }} />
+
+            {/* Schedule toggle */}}
             <View style={s.scheduleRow}>
               <Text style={{ ...typography.body, color: colors.textPrimary }}>
                 Schedule for later
@@ -658,6 +685,7 @@ export default function EditPostModal() {
                   socialAccountId={socialAccountId}
                   onChangeDate={setScheduledFor}
                   onChangeSocialAccount={setSocialAccountId}
+                  hideAccountSelector
                 />
               </View>
             )}

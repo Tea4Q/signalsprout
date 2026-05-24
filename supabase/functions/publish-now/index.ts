@@ -246,6 +246,81 @@ Deno.serve(async (req: Request) => {
 
       externalPostId = pinData.id;
 
+    // ── Facebook ──────────────────────────────────────────────────────────────
+    } else if (post.platform === "facebook") {
+      if (!account.access_token) {
+        return new Response(
+          JSON.stringify({ error: "Facebook access token not found. Please reconnect your Facebook account." }),
+          { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      const accessToken = account.access_token;
+      const pageId = account.external_account_id;
+      if (!pageId) {
+        return new Response(
+          JSON.stringify({ error: "Facebook page ID not configured on social account" }),
+          { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      if (primaryAsset) {
+        // Photo post
+        const { data: urlData } = await svc.storage
+          .from("assets")
+          .createSignedUrl(primaryAsset.file_path, 3600);
+
+        if (!urlData?.signedUrl) {
+          return new Response(
+            JSON.stringify({ error: "Could not generate signed URL for asset" }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+
+        const photoParams = new URLSearchParams({
+          url: urlData.signedUrl,
+          caption: captionText,
+          published: "true",
+          access_token: accessToken,
+        });
+        if (post.destination_url) photoParams.set("link", post.destination_url);
+
+        const photoRes = await fetch(
+          `https://graph.facebook.com/v20.0/${pageId}/photos`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: photoParams.toString(),
+          },
+        );
+        const photoData = await photoRes.json();
+        if (!photoRes.ok || !photoData.post_id) {
+          throw new Error(photoData.error?.message ?? "Failed to publish Facebook photo post");
+        }
+        externalPostId = photoData.post_id;
+      } else {
+        // Text-only feed post
+        const feedParams = new URLSearchParams({
+          message: captionText,
+          access_token: accessToken,
+        });
+        if (post.destination_url) feedParams.set("link", post.destination_url);
+
+        const feedRes = await fetch(
+          `https://graph.facebook.com/v20.0/${pageId}/feed`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: feedParams.toString(),
+          },
+        );
+        const feedData = await feedRes.json();
+        if (!feedRes.ok || !feedData.id) {
+          throw new Error(feedData.error?.message ?? "Failed to publish Facebook post");
+        }
+        externalPostId = feedData.id;
+      }
+
     } else {
       return new Response(
         JSON.stringify({ error: `Platform "${post.platform}" does not support Publish Now yet` }),

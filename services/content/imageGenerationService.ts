@@ -14,10 +14,19 @@ export async function generateImage(
   platform: "instagram" | "pinterest" | "facebook" | "tiktok",
   brandId: string,
   workspaceId: string,
+  characterReferenceUrl?: string,
 ): Promise<GeneratedImage> {
   const { data, error } = await supabase.functions.invoke<GeneratedImage>(
     "generate-image",
-    { body: { prompt, platform, brand_id: brandId, workspace_id: workspaceId } },
+    {
+      body: {
+        prompt,
+        platform,
+        brand_id: brandId,
+        workspace_id: workspaceId,
+        character_reference_url: characterReferenceUrl ?? null,
+      },
+    },
   );
   if (error) {
     let message = error.message;

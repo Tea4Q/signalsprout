@@ -27,7 +27,9 @@ import { uploadExternalImage,
   uploadVideo,
   setAsCharacterReference,
   getCharacterReference,
+  getAssetPublicUrl,
 } from "@/services/content/assetService";
+import { AppTextarea } from "@/components/ui/AppTextarea";
 import { AssetPickerSheet } from "@/components/assets/AssetPickerSheet";
 import { AppButton } from "@/components/ui/AppButton";
 import { AppInput } from "@/components/ui/AppInput";
@@ -59,6 +61,8 @@ export default function CreatePostModal() {
   const [destinationUrl, setDestinationUrl] = useState("");
   const [isCharacterRef, setIsCharacterRef] = useState(false);
   const [existingCharRef, setExistingCharRef] = useState(false);
+  const [imagePrompt, setImagePrompt] = useState("");
+  const [charRefUrl, setCharRefUrl] = useState<string | null>(null);
 
   // "image" | "video" — only exposed for instagram/tiktok platforms
   const [mediaType, setMediaType] = useState<"image" | "video">("image");
@@ -125,6 +129,7 @@ export default function CreatePostModal() {
       setContent(result);
       setCaption(result.caption);
       setHashtags(result.hashtags);
+      setImagePrompt(result.image_prompt);
       setStep(2);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Generation failed.");
@@ -143,6 +148,7 @@ export default function CreatePostModal() {
     if (step === 3 && form.brand_id) {
       getCharacterReference(form.brand_id).then((ref) => {
         setExistingCharRef(ref !== null);
+        setCharRefUrl(ref ? getAssetPublicUrl(ref.file_path) : null);
       });
     }
   }, [step, form.brand_id]);
@@ -154,10 +160,11 @@ export default function CreatePostModal() {
     setGeneratingImage(true);
     try {
       const result = await generateImage(
-        content.image_prompt,
+        imagePrompt || content.image_prompt,
         form.platform,
         form.brand_id,
         workspaceId,
+        charRefUrl ?? undefined,
       );
       setImage(result);
     } catch (e: unknown) {
@@ -165,7 +172,7 @@ export default function CreatePostModal() {
     } finally {
       setGeneratingImage(false);
     }
-  }, [content, form.platform, form.brand_id, workspaceId]);
+  }, [imagePrompt, charRefUrl, content, form.platform, form.brand_id, workspaceId]);
 
   const handleRegenerateImage = useCallback(async () => {
     if (!workspaceId || !content) return;
@@ -173,10 +180,11 @@ export default function CreatePostModal() {
     setGeneratingImage(true);
     try {
       const result = await generateImage(
-        content.image_prompt,
+        imagePrompt || content.image_prompt,
         form.platform,
         form.brand_id,
         workspaceId,
+        charRefUrl ?? undefined,
       );
       setImage(result);
     } catch (e: unknown) {
@@ -184,7 +192,7 @@ export default function CreatePostModal() {
     } finally {
       setGeneratingImage(false);
     }
-  }, [content, form.platform, form.brand_id, workspaceId]);
+  }, [imagePrompt, charRefUrl, content, form.platform, form.brand_id, workspaceId]);
 
   // ── Step 3: upload video from device ─────────────────────────────────────
   const handleUploadVideo = useCallback(async () => {
@@ -463,17 +471,14 @@ export default function CreatePostModal() {
               autoCorrect={false}
             />
 
-            {/* Image prompt preview */}
-            <View style={{ gap: spacing.xs }}>
-              <Text style={{ ...typography.caption, color: colors.textSecondary }}>
-                Suggested Image Prompt
-              </Text>
-              <View style={s.infoBox}>
-                <Text style={{ ...typography.caption, color: colors.textSecondary, fontStyle: "italic" }}>
-                  {content.image_prompt}
-                </Text>
-              </View>
-            </View>
+            {/* Image prompt — editable before generating */}
+            <AppTextarea
+              label="Image Prompt"
+              value={imagePrompt}
+              onChangeText={setImagePrompt}
+              placeholder="Describe the image you want to generate…"
+              numberOfLines={4}
+            />
 
             <AppButton label="Continue to Image" onPress={handleToImageStep} />
           </View>
@@ -518,6 +523,36 @@ export default function CreatePostModal() {
             {/* ── Image tab ── */}
             {mediaType === "image" && (
               <>
+                {/* Character reference banner */}
+                {charRefUrl && (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: spacing.md,
+                      padding: spacing.md,
+                      backgroundColor: colors.surfaceAlt,
+                      borderRadius: radius.md,
+                      borderWidth: 1,
+                      borderColor: colors.primary,
+                    }}
+                  >
+                    <Image
+                      source={{ uri: charRefUrl }}
+                      style={{ width: 48, height: 48, borderRadius: radius.sm }}
+                      resizeMode="cover"
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ ...typography.caption, fontWeight: "600", color: colors.primary }}>
+                        Character reference active
+                      </Text>
+                      <Text style={{ ...typography.caption, color: colors.textMuted }}>
+                        Your brand character will be included in the generated image
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
                 <CreativePreview
                   publicUrl={image?.public_url ?? null}
                   platform={form.platform}

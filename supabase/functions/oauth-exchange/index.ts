@@ -189,9 +189,11 @@ async function exchangeFacebook(params: {
   const page = pages[0];
 
   return {
-    accessToken: longToken, // stored so publish-facebook can call /me/accounts at publish time
+    // Store the Page access token — it never expires for pages the user admins,
+    // so publish-facebook can use it directly without re-calling /me/accounts.
+    accessToken: page.access_token,
     refreshToken: null,
-    expiresAt: null, // long-lived tokens don't carry an expiry in the exchange response
+    expiresAt: null,
     accountName: page.name,
     accountHandle: page.id,
     externalAccountId: page.id,

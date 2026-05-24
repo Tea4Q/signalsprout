@@ -5,9 +5,8 @@
  * until the post's scheduled_for time.  Also called directly by publish-now.
  *
  * Flow per job:
- *  1. Fetch user access token from social_accounts.
- *  2. Exchange it for a Page access token via /me/accounts.
- *  3. If post has an image → POST to /{page_id}/photos  (creates photo post).
+ *  1. Fetch Page access token from social_accounts (stored at OAuth time).
+ *  2. If post has an image → POST to /{page_id}/photos  (creates photo post).
  *     If no image        → POST to /{page_id}/feed      (creates text post).
  *  4. Update posts, publish_jobs, and audit_logs.
  */
@@ -84,34 +83,12 @@ Deno.serve(async (_req: Request) => {
       if (!account) throw new Error("Social account not found");
       if (!account.access_token) throw new Error("Facebook access token missing on social account");
 
-      const userAccessToken = account.access_token as string;
       const pageId = account.external_account_id as string | null;
       if (!pageId) throw new Error("Facebook Page ID not configured on social account");
 
-      // ── Exchange user token for a Page access token ───────────────────────
-      // The user token obtained during OAuth only has user-level permissions.
-      // Publishing to a Page requires a *Page* access token, which we get by
-      // calling /me/accounts and finding the matching page by ID.
-
-      const accountsRes = await fetch(
-        `https://graph.facebook.com/${GRAPH_VERSION}/me/accounts?access_token=${encodeURIComponent(userAccessToken)}`,
-      );
-      const accountsData = await accountsRes.json();
-      if (!accountsRes.ok || !Array.isArray(accountsData.data)) {
-        throw new Error(
-          accountsData.error?.message ?? "Failed to fetch Facebook Pages for user",
-        );
-      }
-
-      const pages = accountsData.data as { id: string; access_token: string }[];
-      const page = pages.find((p) => p.id === pageId);
-      if (!page) {
-        throw new Error(
-          `Facebook Page ${pageId} not found in the connected user's pages. ` +
-            `Ensure the account has admin access to the page and the page ID is correct.`,
-        );
-      }
-      const pageAccessToken = page.access_token;
+      // The OAuth exchange stores the Page access token directly — it never expires
+      // for pages the user admins, so no /me/accounts re-fetch is needed.
+      const pageAccessToken = account.access_token as string;
 
       // ── Build caption text ────────────────────────────────────────────────
 

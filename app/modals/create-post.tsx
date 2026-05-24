@@ -487,8 +487,8 @@ export default function CreatePostModal() {
         {/* ── Step 3: Generate Image / Upload Video ── */}
         {step === 3 && content && (
           <View style={{ gap: spacing.xl }}>
-            {/* Media type toggle — Instagram & TikTok only */}
-            {(form.platform === "instagram" || form.platform === "tiktok") && (
+            {/* Media type toggle — Instagram, TikTok & Facebook */}
+            {(form.platform === "instagram" || form.platform === "tiktok" || form.platform === "facebook") && (
               <View style={[s.mediaTypeTabs, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
                 {(["image", "video"] as const).map((type) => (
                   <Pressable
@@ -513,7 +513,7 @@ export default function CreatePostModal() {
                         color: mediaType === type ? "#fff" : colors.textSecondary,
                       }}
                     >
-                      {type === "image" ? "Image" : "Video / Reel"}
+                      {type === "image" ? "Image" : form.platform === "facebook" ? "Video" : "Video / Reel"}
                     </Text>
                   </Pressable>
                 ))}
@@ -574,6 +574,12 @@ export default function CreatePostModal() {
                       loading={uploadingImage}
                       variant="secondary"
                     />
+                    <AppButton
+                      label="Use from Library"
+                      onPress={() => setShowLibraryPicker(true)}
+                      disabled={generatingImage || uploadingImage}
+                      variant="secondary"
+                    />
                   </View>
                 ) : (
                   <View style={{ gap: spacing.md }}>
@@ -593,6 +599,12 @@ export default function CreatePostModal() {
                       onPress={handleUploadImage}
                       disabled={uploadingImage || generatingImage}
                       loading={uploadingImage}
+                      variant="secondary"
+                    />
+                    <AppButton
+                      label="Use from Library"
+                      onPress={() => setShowLibraryPicker(true)}
+                      disabled={generatingImage || uploadingImage}
                       variant="secondary"
                     />
                   </View>
@@ -670,6 +682,8 @@ export default function CreatePostModal() {
                       <Text style={{ ...typography.caption, color: colors.textMuted, textAlign: "center" }}>
                         {form.platform === "tiktok"
                           ? "Select a video file to post on TikTok"
+                          : form.platform === "facebook"
+                          ? "Select a video file to post on Facebook"
                           : "Select a video file to post as an Instagram Reel"}
                       </Text>
                     </View>

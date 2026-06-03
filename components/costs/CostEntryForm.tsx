@@ -6,6 +6,7 @@ import { getCostSources } from "@/services/finance/costService";
 import DateTimePicker, {
     DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
+import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
 
@@ -25,6 +26,7 @@ interface CostEntryFormProps {
   onChange: (values: CostEntryFormValues) => void;
   brandOptions: SelectOption[];
   errors?: Partial<Record<keyof CostEntryFormValues, string>>;
+  refreshKey?: number;
 }
 
 export function CostEntryForm({
@@ -33,8 +35,10 @@ export function CostEntryForm({
   onChange,
   brandOptions,
   errors,
+  refreshKey = 0,
 }: CostEntryFormProps) {
   const { colors } = useTheme();
+  const router = useRouter();
   const [sourceOptions, setSourceOptions] = useState<SelectOption[]>([]);
   const [showDatePicker, setShowDatePicker] = useState(false);
 
@@ -49,7 +53,7 @@ export function CostEntryForm({
         ),
       )
       .catch(() => {});
-  }, [workspaceId]);
+  }, [workspaceId, refreshKey]);
 
   function update(partial: Partial<CostEntryFormValues>) {
     onChange({ ...values, ...partial });
@@ -75,6 +79,8 @@ export function CostEntryForm({
         onChange={(v) => update({ costSourceId: v })}
         placeholder="Select tool / vendor"
         error={errors?.costSourceId}
+        onAddNew={() => router.push("/modals/add-cost-source" as never)}
+        addNewLabel="Add cost source"
       />
 
       <AppInput

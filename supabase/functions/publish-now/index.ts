@@ -264,8 +264,24 @@ Deno.serve(async (req: Request) => {
       const accountsRes = await fetch(
         `https://graph.facebook.com/v21.0/me/accounts?access_token=${encodeURIComponent(pageAccessToken)}`,
       );
-      if (accountsRes.ok) {
+      if (!accountsRes.ok) {
+        // Token is already a Page Access Token — this is expected for accounts
+        // connected with the current OAuth flow. Continue with the stored token.
+      } else {
         const accountsData = await accountsRes.json();
+        const fbError = accountsData.error;
+        if (fbError?.code === 200 || (fbError?.message ?? "").includes("pages_manage_posts")) {
+          return new Response(
+            JSON.stringify({
+              error:
+                "Facebook requires the pages_manage_posts permission to publish posts. " +
+                "Please go to Social Accounts, disconnect Facebook, then reconnect and approve all permissions. " +
+                "If the error persists your Meta App needs pages_manage_posts added in the Meta Developer Portal " +
+                "(App Dashboard → Facebook Login for Business → your config → Permissions) and must be in Development mode or App Review approved.",
+            }),
+            { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
         const pages: Array<{ id: string; name: string; access_token: string }> =
           accountsData.data ?? [];
         if (pages.length > 0) {
@@ -283,7 +299,6 @@ Deno.serve(async (req: Request) => {
             .eq("id", post.social_account_id);
         }
       }
-
       if (!pageId) {
         return new Response(
           JSON.stringify({ error: "Facebook page ID not configured on social account" }),

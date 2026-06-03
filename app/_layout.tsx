@@ -257,6 +257,10 @@ function RootLayout() {
           options={{ presentation: "modal", headerShown: false }}
         />
         <Stack.Screen
+          name="modals/add-cost-source"
+          options={{ presentation: "modal", headerShown: false }}
+        />
+        <Stack.Screen
           name="modals/add-credit"
           options={{ presentation: "modal", headerShown: false }}
         />

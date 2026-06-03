@@ -107,6 +107,7 @@ export function AppSelect({
         visible={open}
         transparent
         animationType="fade"
+        presentationStyle="overFullScreen"
         onRequestClose={() => setOpen(false)}
       >
         <TouchableWithoutFeedback onPress={() => setOpen(false)}>

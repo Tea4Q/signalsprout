@@ -72,6 +72,11 @@ Deno.serve(async (_req) => {
           post.external_post_id!,
           accessToken,
         );
+      } else if (post.platform === "facebook") {
+        metrics = await fetchFacebookMetrics(
+          post.external_post_id!,
+          accessToken,
+        );
       }
 
       const impressions = metrics.impressions ?? 0;
@@ -172,6 +177,63 @@ async function fetchInstagramMetrics(
         break;
       case "shares":
         out.shares = item.values?.[0]?.value ?? item.value ?? 0;
+        break;
+    }
+  }
+  return out;
+}
+
+// ─── Facebook Graph API ─────────────────────────────────────────────────────
+
+async function fetchFacebookMetrics(
+  postId: string,
+  accessToken: string,
+): Promise<Record<string, number>> {
+  const metric = [
+    "post_impressions",
+    "post_impressions_unique",
+    "post_engaged_users",
+    "post_reactions_by_type_total",
+    "post_clicks",
+    "post_shares",
+  ].join(",");
+  const url =
+    `https://graph.facebook.com/v21.0/${postId}/insights` +
+    `?metric=${metric}&access_token=${encodeURIComponent(accessToken)}`;
+
+  const res = await fetch(url);
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Facebook API error: ${res.status} ${body}`);
+  }
+  const json = await res.json();
+
+  const out: Record<string, number> = {};
+  for (const item of json?.data ?? []) {
+    switch (item.name) {
+      case "post_impressions":
+        out.impressions = item.values?.[0]?.value ?? 0;
+        break;
+      case "post_impressions_unique":
+        out.reach = item.values?.[0]?.value ?? 0;
+        break;
+      case "post_engaged_users":
+        out.likes = item.values?.[0]?.value ?? 0;
+        break;
+      case "post_reactions_by_type_total": {
+        // Sum all reaction types (LIKE, LOVE, WOW, HAHA, SAD, ANGRY)
+        const reactions = item.values?.[0]?.value ?? {};
+        out.likes = Object.values(reactions as Record<string, number>).reduce(
+          (sum, v) => sum + (v ?? 0),
+          0,
+        );
+        break;
+      }
+      case "post_clicks":
+        out.outbound_clicks = item.values?.[0]?.value ?? 0;
+        break;
+      case "post_shares":
+        out.shares = item.values?.[0]?.value ?? 0;
         break;
     }
   }

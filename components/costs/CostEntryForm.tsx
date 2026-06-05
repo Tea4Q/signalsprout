@@ -121,7 +121,6 @@ export function CostEntryForm({
             mode="date"
             display={Platform.OS === "ios" ? "inline" : "default"}
             onChange={handleDateChange}
-            maximumDate={new Date()}
           />
         )}
       </View>

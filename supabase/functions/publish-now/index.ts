@@ -337,6 +337,12 @@ Deno.serve(async (req: Request) => {
         );
         const photoData = await photoRes.json();
         if (!photoRes.ok || !photoData.post_id) {
+          if (photoData.error?.code === 200) {
+            throw new Error(
+              "Facebook permissions error: the stored Page access token is missing pages_manage_posts. " +
+              "Please go to Social Accounts, disconnect Facebook, then reconnect and approve all permissions.",
+            );
+          }
           throw new Error(photoData.error?.message ?? "Failed to publish Facebook photo post");
         }
         externalPostId = photoData.post_id;
@@ -358,6 +364,12 @@ Deno.serve(async (req: Request) => {
         );
         const feedData = await feedRes.json();
         if (!feedRes.ok || !feedData.id) {
+          if (feedData.error?.code === 200) {
+            throw new Error(
+              "Facebook permissions error: the stored Page access token is missing pages_manage_posts. " +
+              "Please go to Social Accounts, disconnect Facebook, then reconnect and approve all permissions.",
+            );
+          }
           throw new Error(feedData.error?.message ?? "Failed to publish Facebook post");
         }
         externalPostId = feedData.id;

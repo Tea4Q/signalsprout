@@ -115,7 +115,7 @@ export function AppSelect({
             style={{
               flex: 1,
               backgroundColor: "rgba(0,0,0,0.5)",
-              justifyContent: "flex-end",
+              justifyContent: "flex-start",
             }}
           >
             <TouchableWithoutFeedback>

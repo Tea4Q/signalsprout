@@ -229,6 +229,23 @@ async function exchangePinterest(
   });
   const profile = await profileRes.json();
 
+  // Fetch the user's boards so we can store a default board ID.
+  // publish-now reads account_identifier as the board_id for pin creation.
+  const boardsRes = await fetch(
+    "https://api.pinterest.com/v5/boards?page_size=1",
+    { headers: { Authorization: `Bearer ${tokens.access_token}` } },
+  );
+  const boardsData = boardsRes.ok ? await boardsRes.json() : { items: [] };
+  const firstBoard: { id?: string; name?: string } | undefined =
+    boardsData.items?.[0];
+
+  if (!firstBoard?.id) {
+    throw new Error(
+      "No Pinterest boards found on this account. " +
+      "Please create at least one board on Pinterest, then reconnect.",
+    );
+  }
+
   const expiresAt = tokens.expires_in
     ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
     : null;
@@ -238,7 +255,8 @@ async function exchangePinterest(
     refreshToken: tokens.refresh_token ?? null,
     expiresAt,
     accountName: profile.username ?? "Pinterest Account",
-    accountHandle: profile.username ?? null,
+    // account_identifier is read by publish-now as the board_id
+    accountHandle: firstBoard.id,
     externalAccountId: profile.id ?? null,
     avatarUrl: profile.profile_image ?? null,
     scopes: tokens.scope ?? null,

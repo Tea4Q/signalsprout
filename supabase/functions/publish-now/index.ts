@@ -197,8 +197,7 @@ Deno.serve(async (req: Request) => {
       }
 
       const accessToken = account.access_token;
-      const boardId = socialAccount.default_board_id || socialAccount.platform_settings?.default_board_id;
-      // const boardId = account.account_identifier;
+      const boardId = account.account_identifier;
       if (!boardId) {
         return new Response(
           JSON.stringify({ error: "Pinterest board ID not configured on social account" }),

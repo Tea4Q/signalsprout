@@ -15,6 +15,7 @@ export async function generateImage(
   brandId: string,
   workspaceId: string,
   characterReferenceUrl?: string,
+  productShotUrl?: string,
 ): Promise<GeneratedImage> {
   const { data, error } = await supabase.functions.invoke<GeneratedImage>(
     "generate-image",
@@ -25,6 +26,7 @@ export async function generateImage(
         brand_id: brandId,
         workspace_id: workspaceId,
         character_reference_url: characterReferenceUrl ?? null,
+        product_shot_url: productShotUrl ?? null,
       },
     },
   );

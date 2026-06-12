@@ -323,3 +323,20 @@ export async function getCharacterReference(brandId: string): Promise<AssetRow |
     .maybeSingle();
   return data ?? null;
 }
+
+/**
+ * Returns the most recently uploaded Product Shot asset for a brand, or null.
+ * Used to inject the product as a visual reference into image generation.
+ */
+export async function getProductShot(brandId: string): Promise<AssetRow | null> {
+  const { data } = await supabase
+    .from("assets")
+    .select("*")
+    .eq("brand_id", brandId)
+    .eq("alt_text", "Product Shot")
+    .eq("type", "uploaded_image")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data ?? null;
+}

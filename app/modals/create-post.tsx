@@ -27,6 +27,7 @@ import { uploadExternalImage,
   uploadVideo,
   setAsCharacterReference,
   getCharacterReference,
+  getProductShot,
   getAssetPublicUrl,
 } from "@/services/content/assetService";
 import { AppTextarea } from "@/components/ui/AppTextarea";
@@ -67,6 +68,7 @@ export default function CreatePostModal() {
   // Brand details for the creative preview
   const [brandName, setBrandName] = useState<string | undefined>(undefined);
   const [brandAvatarUrl, setBrandAvatarUrl] = useState<string | null>(null);
+  const [productShotUrl, setProductShotUrl] = useState<string | null>(null);
 
   // "image" | "video" — only exposed for instagram/tiktok platforms
   const [mediaType, setMediaType] = useState<"image" | "video">("image");
@@ -93,9 +95,10 @@ export default function CreatePostModal() {
     if (!form.brand_id || !workspaceId) {
       setBrandName(undefined);
       setBrandAvatarUrl(null);
+      setProductShotUrl(null);
       return;
     }
-    // Fetch brand name + website_url, and social account avatar in parallel
+    // Fetch brand name + website_url, social account avatar, and product shot in parallel
     Promise.all([
       supabase
         .from("brands")
@@ -110,13 +113,15 @@ export default function CreatePostModal() {
         .eq("platform", form.platform)
         .eq("status", "active")
         .maybeSingle(),
-    ]).then(([{ data: brand }, { data: social }]) => {
+      getProductShot(form.brand_id),
+    ]).then(([{ data: brand }, { data: social }, productShot]) => {
       if (brand) {
         setBrandName(social?.account_name ?? brand.name);
         // Pre-populate destination URL with brand website only if user hasn't typed one yet
         setDestinationUrl((prev) => (prev === "" && brand.website_url ? brand.website_url : prev));
       }
       setBrandAvatarUrl(social?.avatar_url ?? null);
+      setProductShotUrl(productShot ? getAssetPublicUrl(productShot.file_path) : null);
     });
   }, [form.brand_id, form.platform, workspaceId]);
 
@@ -201,6 +206,7 @@ export default function CreatePostModal() {
         form.brand_id,
         workspaceId,
         charRefUrl ?? undefined,
+        productShotUrl ?? undefined,
       );
       setImage(result);
     } catch (e: unknown) {
@@ -208,7 +214,7 @@ export default function CreatePostModal() {
     } finally {
       setGeneratingImage(false);
     }
-  }, [imagePrompt, charRefUrl, content, form.platform, form.brand_id, workspaceId]);
+  }, [imagePrompt, charRefUrl, productShotUrl, content, form.platform, form.brand_id, workspaceId]);
 
   const handleRegenerateImage = useCallback(async () => {
     if (!workspaceId || !content) return;
@@ -221,6 +227,7 @@ export default function CreatePostModal() {
         form.brand_id,
         workspaceId,
         charRefUrl ?? undefined,
+        productShotUrl ?? undefined,
       );
       setImage(result);
     } catch (e: unknown) {
@@ -228,7 +235,7 @@ export default function CreatePostModal() {
     } finally {
       setGeneratingImage(false);
     }
-  }, [imagePrompt, charRefUrl, content, form.platform, form.brand_id, workspaceId]);
+  }, [imagePrompt, charRefUrl, productShotUrl, content, form.platform, form.brand_id, workspaceId]);
 
   // ── Step 3: upload video from device ─────────────────────────────────────
   const handleUploadVideo = useCallback(async () => {
@@ -584,6 +591,36 @@ export default function CreatePostModal() {
                       </Text>
                       <Text style={{ ...typography.caption, color: colors.textMuted }}>
                         Your brand character will be included in the generated image
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* Product shot banner */}
+                {productShotUrl && (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: spacing.md,
+                      padding: spacing.md,
+                      backgroundColor: colors.surfaceAlt,
+                      borderRadius: radius.md,
+                      borderWidth: 1,
+                      borderColor: colors.secondary,
+                    }}
+                  >
+                    <Image
+                      source={{ uri: productShotUrl }}
+                      style={{ width: 48, height: 48, borderRadius: radius.sm }}
+                      resizeMode="cover"
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ ...typography.caption, fontWeight: "600", color: colors.secondary }}>
+                        Product shot active
+                      </Text>
+                      <Text style={{ ...typography.caption, color: colors.textMuted }}>
+                        Your brand's product will be used as a visual reference
                       </Text>
                     </View>
                   </View>

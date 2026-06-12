@@ -16,6 +16,8 @@ interface CreativePreviewProps {
   loading?: boolean;
   caption?: string;
   hashtags?: string[];
+  brandName?: string;
+  avatarUrl?: string | null;
 }
 
 export function CreativePreview({
@@ -24,20 +26,35 @@ export function CreativePreview({
   loading = false,
   caption,
   hashtags,
+  brandName,
+  avatarUrl,
 }: CreativePreviewProps) {
   const { colors } = useTheme();
   const aspectRatio = ASPECT_RATIOS[platform];
+  const displayName = brandName ?? "your_brand";
+  const initials = brandName ? brandName.slice(0, 2).toUpperCase() : null;
 
   if (platform === "instagram") {
     return (
       <View style={[igStyles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         {/* Header row */}
         <View style={igStyles.header}>
-          <View style={[igStyles.avatar, { backgroundColor: colors.primarySoft }]}>
-            <Text style={{ fontSize: 14 }}>👤</Text>
+          <View style={[igStyles.avatar, { backgroundColor: colors.primarySoft, overflow: "hidden" }]}>
+            {avatarUrl ? (
+              <Image
+                source={{ uri: avatarUrl }}
+                style={{ width: 32, height: 32 }}
+                resizeMode="cover"
+                accessibilityLabel={`${displayName} avatar`}
+              />
+            ) : initials ? (
+              <Text style={{ fontSize: 12, fontWeight: "700", color: colors.primary }}>{initials}</Text>
+            ) : (
+              <Text style={{ fontSize: 14 }}>👤</Text>
+            )}
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[igStyles.username, { color: colors.textPrimary }]}>your_brand</Text>
+            <Text style={[igStyles.username, { color: colors.textPrimary }]}>{displayName}</Text>
           </View>
           <Text style={{ color: colors.textMuted, fontSize: 18, lineHeight: 18 }}>•••</Text>
         </View>
@@ -80,7 +97,7 @@ export function CreativePreview({
           <View style={igStyles.captionArea}>
             {caption ? (
               <Text style={[igStyles.captionText, { color: colors.textPrimary }]} numberOfLines={3}>
-                <Text style={{ fontWeight: "700" }}>your_brand </Text>
+                <Text style={{ fontWeight: "700" }}>{displayName} </Text>
                 {caption}
               </Text>
             ) : null}

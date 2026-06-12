@@ -64,6 +64,10 @@ export default function CreatePostModal() {
   const [imagePrompt, setImagePrompt] = useState("");
   const [charRefUrl, setCharRefUrl] = useState<string | null>(null);
 
+  // Brand details for the creative preview
+  const [brandName, setBrandName] = useState<string | undefined>(undefined);
+  const [brandAvatarUrl, setBrandAvatarUrl] = useState<string | null>(null);
+
   // "image" | "video" — only exposed for instagram/tiktok platforms
   const [mediaType, setMediaType] = useState<"image" | "video">("image");
   const [uploadingVideo, setUploadingVideo] = useState(false);
@@ -83,6 +87,38 @@ export default function CreatePostModal() {
   const [newHashtag, setNewHashtag] = useState("");
 
   const s = styles(colors);
+
+  // ── Fetch brand details (name, website, social avatar) for preview ────────
+  useEffect(() => {
+    if (!form.brand_id || !workspaceId) {
+      setBrandName(undefined);
+      setBrandAvatarUrl(null);
+      return;
+    }
+    // Fetch brand name + website_url, and social account avatar in parallel
+    Promise.all([
+      supabase
+        .from("brands")
+        .select("name, website_url")
+        .eq("id", form.brand_id)
+        .single(),
+      supabase
+        .from("social_accounts")
+        .select("avatar_url, account_name")
+        .eq("workspace_id", workspaceId)
+        .eq("brand_id", form.brand_id)
+        .eq("platform", form.platform)
+        .eq("status", "active")
+        .maybeSingle(),
+    ]).then(([{ data: brand }, { data: social }]) => {
+      if (brand) {
+        setBrandName(social?.account_name ?? brand.name);
+        // Pre-populate destination URL with brand website only if user hasn't typed one yet
+        setDestinationUrl((prev) => (prev === "" && brand.website_url ? brand.website_url : prev));
+      }
+      setBrandAvatarUrl(social?.avatar_url ?? null);
+    });
+  }, [form.brand_id, form.platform, workspaceId]);
 
   // ── Step 4: load social accounts for the selected platform ───────────────
   useEffect(() => {
@@ -557,6 +593,8 @@ export default function CreatePostModal() {
                   publicUrl={image?.public_url ?? null}
                   platform={form.platform}
                   loading={generatingImage}
+                  brandName={brandName}
+                  avatarUrl={brandAvatarUrl}
                 />
 
                 {!image ? (

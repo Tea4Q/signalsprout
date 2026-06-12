@@ -5,8 +5,7 @@
  * Returns { success: true, external_post_id: string }
  *       | { error: string }
  */
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "jsr:@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -94,10 +93,10 @@ Deno.serve(async (req: Request) => {
 
     // Resolve primary image
     const postAssets = (
-      post.post_assets as Array<{
+      post.post_assets as {
         sort_order: number;
         assets: { file_path: string } | null;
-      }> | null
+      }[] | null
     ) ?? [];
     postAssets.sort((a, b) => a.sort_order - b.sort_order);
     const primaryAsset = postAssets[0]?.assets ?? null;
@@ -282,7 +281,7 @@ Deno.serve(async (req: Request) => {
             { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
           );
         }
-        const pages: Array<{ id: string; name: string; access_token: string }> =
+        const pages: { id: string; name: string; access_token: string }[] =
           accountsData.data ?? [];
         if (pages.length > 0) {
           const matched = pages.find((p) => p.id === pageId) ?? pages[0];

@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -57,25 +58,33 @@ export default function ContentScreen() {
   }, [workspaceId]);
 
   const handleDelete = useCallback((item: PostRow) => {
-    Alert.alert(
-      "Delete Post",
-      "This will permanently delete the post. This cannot be undone.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await deletePost(item.id);
-              setPosts((prev) => prev.filter((p) => p.id !== item.id));
-            } catch (e: unknown) {
-              Alert.alert("Error", e instanceof Error ? e.message : "Delete failed.");
-            }
-          },
-        },
-      ],
-    );
+    const doDelete = async () => {
+      try {
+        await deletePost(item.id);
+        setPosts((prev) => prev.filter((p) => p.id !== item.id));
+      } catch (e: unknown) {
+        if (Platform.OS === "web") {
+          window.alert(e instanceof Error ? e.message : "Delete failed.");
+        } else {
+          Alert.alert("Error", e instanceof Error ? e.message : "Delete failed.");
+        }
+      }
+    };
+
+    if (Platform.OS === "web") {
+      if (window.confirm("Delete this post permanently? This cannot be undone.")) {
+        doDelete();
+      }
+    } else {
+      Alert.alert(
+        "Delete Post",
+        "This will permanently delete the post. This cannot be undone.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Delete", style: "destructive", onPress: doDelete },
+        ],
+      );
+    }
   }, []);
 
   useEffect(() => {

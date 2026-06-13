@@ -342,27 +342,32 @@ export default function EditPostModal() {
 
   const handleDelete = useCallback(() => {
     if (!postId || !post) return;
-    Alert.alert(
-      "Delete Post",
-      "This post will be permanently deleted. This cannot be undone.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            setDeleting(true);
-            try {
-              await deletePost(postId);
-              router.back();
-            } catch (e: unknown) {
-              setError(e instanceof Error ? e.message : "Delete failed.");
-              setDeleting(false);
-            }
-          },
-        },
-      ],
-    );
+
+    const doDelete = async () => {
+      setDeleting(true);
+      try {
+        await deletePost(postId);
+        router.back();
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : "Delete failed.");
+        setDeleting(false);
+      }
+    };
+
+    if (Platform.OS === "web") {
+      if (window.confirm("Delete this post permanently? This cannot be undone.")) {
+        doDelete();
+      }
+    } else {
+      Alert.alert(
+        "Delete Post",
+        "This post will be permanently deleted. This cannot be undone.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Delete", style: "destructive", onPress: doDelete },
+        ],
+      );
+    }
   }, [postId, post, router]);
 
   if (!workspaceId || loadingPost) {

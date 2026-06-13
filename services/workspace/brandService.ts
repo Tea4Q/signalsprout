@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { deleteAsset } from "@/services/content/assetService";
 import type { Database } from "@/types/database";
 
 type BrandRow = Database["public"]["Tables"]["brands"]["Row"];
@@ -139,8 +140,8 @@ export async function uploadBrandAsset(
   return asset;
 }
 
-export async function deleteBrandAsset(assetId: string, filePath: string): Promise<void> {
-  await supabase.storage.from("assets").remove([filePath]);
-  const { error } = await supabase.from("assets").delete().eq("id", assetId);
-  if (error) throw error;
+export async function deleteBrandAsset(assetId: string, _filePath: string): Promise<void> {
+  // Delegates to deleteAsset which removes post_assets FK rows first,
+  // then the DB record, then best-effort storage cleanup.
+  await deleteAsset(assetId);
 }

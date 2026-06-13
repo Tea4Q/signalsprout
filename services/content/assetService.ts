@@ -40,37 +40,11 @@ export async function getAssetsWithUsage(
 }
 
 export async function deleteAsset(assetId: string): Promise<void> {
-  // Fetch file_path before deleting (needed for storage cleanup).
-  const { data: asset, error: fetchError } = await supabase
-    .from("assets")
-    .select("file_path")
-    .eq("id", assetId)
-    .single();
-
-  if (fetchError || !asset) {
-    throw new Error("Asset not found or access denied.");
-  }
-
-  // Remove post_assets join rows first — the FK has no CASCADE so the asset
-  // delete would be blocked if any post still references this asset.
-  const { error: unlinkError } = await supabase
-    .from("post_assets")
-    .delete()
-    .eq("asset_id", assetId);
-  if (unlinkError) throw unlinkError;
-
-  // Delete the DB record.
-  const { error: dbError, count } = await supabase
-    .from("assets")
-    .delete({ count: "exact" })
-    .eq("id", assetId);
-
-  if (dbError) throw dbError;
-  if (count === 0) throw new Error("Delete blocked — check workspace permissions.");
-
-  // Best-effort storage cleanup — don't fail the operation if the file
-  // is already gone or the RLS policy can't match the path.
-  await supabase.storage.from("assets").remove([asset.file_path]);
+  const { data, error } = await supabase.functions.invoke("delete-asset", {
+    body: { asset_id: assetId },
+  });
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
 }
 
 export function getAssetPublicUrl(filePath: string): string {

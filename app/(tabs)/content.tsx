@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Pressable,
   StyleSheet,
@@ -9,10 +10,11 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { radius, spacing, typography } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { useWorkspace } from "@/context/workspace-context";
-import { getPosts } from "@/services/scheduling/postService";
+import { getPosts, deletePost } from "@/services/scheduling/postService";
 import { AppBadge, BadgeVariant } from "@/components/ui/AppBadge";
 import type { Database } from "@/types/database";
 
@@ -53,6 +55,28 @@ export default function ContentScreen() {
       setLoading(false);
     }
   }, [workspaceId]);
+
+  const handleDelete = useCallback((item: PostRow) => {
+    Alert.alert(
+      "Delete Post",
+      "This will permanently delete the post. This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deletePost(item.id);
+              setPosts((prev) => prev.filter((p) => p.id !== item.id));
+            } catch (e: unknown) {
+              Alert.alert("Error", e instanceof Error ? e.message : "Delete failed.");
+            }
+          },
+        },
+      ],
+    );
+  }, []);
 
   useEffect(() => {
     if (!loadingWorkspace) loadPosts();
@@ -96,7 +120,17 @@ export default function ContentScreen() {
               </Text>
             )}
           </View>
-          <AppBadge label={badge.label} variant={badge.variant} />
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+            <AppBadge label={badge.label} variant={badge.variant} />
+            <Pressable
+              onPress={() => handleDelete(item)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Delete post"
+            >
+              <MaterialIcons name="delete-outline" size={20} color={colors.danger} />
+            </Pressable>
+          </View>
         </View>
         <Text style={{ ...typography.micro, color: colors.textMuted, marginTop: spacing.sm }}>
           {new Date(item.created_at).toLocaleDateString()}

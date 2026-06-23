@@ -379,20 +379,25 @@ function AssetsTab({
   }
 
   async function handleDelete(asset: AssetRow) {
+    const doDelete = async () => {
+      try {
+        await deleteBrandAsset(asset.id, asset.file_path);
+        setAssets((prev) => prev.filter((a) => a.id !== asset.id));
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Delete failed.");
+      }
+    };
+
+    if (Platform.OS === "web") {
+      if (window.confirm(`Remove "${asset.alt_text ?? "this asset"}" permanently?`)) {
+        await doDelete();
+      }
+      return;
+    }
+
     Alert.alert("Delete Asset", `Remove "${asset.alt_text ?? "this asset"}" permanently?`, [
       { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await deleteBrandAsset(asset.id, asset.file_path);
-            setAssets((prev) => prev.filter((a) => a.id !== asset.id));
-          } catch (err: unknown) {
-            setError(err instanceof Error ? err.message : "Delete failed.");
-          }
-        },
-      },
+      { text: "Delete", style: "destructive", onPress: doDelete },
     ]);
   }
 

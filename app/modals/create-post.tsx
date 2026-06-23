@@ -35,6 +35,7 @@ import { AssetPickerSheet } from "@/components/assets/AssetPickerSheet";
 import { AppButton } from "@/components/ui/AppButton";
 import { AppInput } from "@/components/ui/AppInput";
 import { AppSelect, SelectOption } from "@/components/ui/AppSelect";
+import { ScheduleForm } from "@/components/calendar/ScheduleForm";
 import { supabase } from "@/lib/supabase";
 
 const TOTAL_STEPS = 4;
@@ -47,6 +48,13 @@ const DEFAULT_FORM: PromptBuilderValues = {
   cta: "",
   source_material: "",
 };
+
+function defaultScheduleDate(): Date {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  d.setHours(10, 0, 0, 0);
+  return d;
+}
 
 export default function CreatePostModal() {
   const { colors } = useTheme();
@@ -82,7 +90,7 @@ export default function CreatePostModal() {
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isScheduled, setIsScheduled] = useState(false);
-  const [scheduledFor, setScheduledFor] = useState("");
+  const [scheduledFor, setScheduledFor] = useState<Date>(defaultScheduleDate());
   const [socialAccountId, setSocialAccountId] = useState<string | null>(null);
   const [socialAccounts, setSocialAccounts] = useState<SelectOption[]>([]);
   const [pinTitle, setPinTitle] = useState("");
@@ -281,20 +289,11 @@ export default function CreatePostModal() {
 
     let scheduledAt: string | null = null;
     if (schedule) {
-      if (!scheduledFor.trim()) {
-        setError("Please enter a scheduled date and time.");
-        return;
-      }
-      const parsed = new Date(scheduledFor.trim());
-      if (isNaN(parsed.getTime())) {
-        setError("Invalid date — use format YYYY-MM-DD HH:MM.");
-        return;
-      }
-      if (parsed <= new Date()) {
+      if (scheduledFor <= new Date()) {
         setError("Scheduled time must be in the future.");
         return;
       }
-      scheduledAt = parsed.toISOString();
+      scheduledAt = scheduledFor.toISOString();
     }
 
     setError(null);
@@ -1000,14 +999,15 @@ export default function CreatePostModal() {
               />
             </View>
 
-            {isScheduled && (
-              <AppInput
-                label="Publish at (YYYY-MM-DD HH:MM)"
-                value={scheduledFor}
-                onChangeText={setScheduledFor}
-                placeholder="2026-05-01 09:00"
-                keyboardType="numbers-and-punctuation"
-                autoCapitalize="none"
+            {isScheduled && workspaceId && (
+              <ScheduleForm
+                workspaceId={workspaceId}
+                platform={form.platform}
+                scheduledFor={scheduledFor}
+                socialAccountId={socialAccountId}
+                onChangeDate={setScheduledFor}
+                onChangeSocialAccount={setSocialAccountId}
+                hideAccountSelector
               />
             )}
 

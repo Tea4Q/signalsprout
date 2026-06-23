@@ -1,20 +1,34 @@
 /// <reference types="jsr:@supabase/functions-js/edge-runtime.d.ts" />
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-Deno.serve(async (_req) => {
+Deno.serve(async (req) => {
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
+  let workspaceId: string | null = null;
+  try {
+    const body = await req.clone().json() as { workspace_id?: string };
+    workspaceId = body.workspace_id ?? null;
+  } catch {
+    workspaceId = null;
+  }
+
   // Fetch all published posts that have an external_post_id (needed for API calls)
-  const { data: posts, error: postsError } = await supabase
+  let postsQuery = supabase
     .from("posts")
     .select(
       "id, workspace_id, platform, external_post_id, social_account_id, published_at",
     )
     .eq("status", "published")
     .not("external_post_id", "is", null);
+
+  if (workspaceId) {
+    postsQuery = postsQuery.eq("workspace_id", workspaceId);
+  }
+
+  const { data: posts, error: postsError } = await postsQuery;
 
   if (postsError) {
     return new Response(JSON.stringify({ error: postsError.message }), {
@@ -146,19 +160,18 @@ async function fetchInstagramMetrics(
   mediaId: string,
   accessToken: string,
 ): Promise<Record<string, number>> {
-  const fields =
-    "impressions,reach,likes_count,comments_count,saves,shares,total_interactions";
-  const url = `https://graph.facebook.com/v20.0/${mediaId}/insights?metric=${fields}&access_token=${accessToken}`;
-
-  const res = await fetch(url);
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Instagram API error: ${res.status} ${body}`);
-  }
-  const json = await res.json();
-
   const out: Record<string, number> = {};
-  for (const item of json?.data ?? []) {
+
+  // Insights endpoint supports impressions/reach/saved.
+  const insightsUrl = `https://graph.facebook.com/v20.0/${mediaId}/insights?metric=impressions,reach,saved&access_token=${accessToken}`;
+  const insightsRes = await fetch(insightsUrl);
+  if (!insightsRes.ok) {
+    const body = await insightsRes.text();
+    throw new Error(`Instagram insights error: ${insightsRes.status} ${body}`);
+  }
+  const insightsJson = await insightsRes.json();
+
+  for (const item of insightsJson?.data ?? []) {
     switch (item.name) {
       case "impressions":
         out.impressions = item.values?.[0]?.value ?? item.value ?? 0;
@@ -166,20 +179,23 @@ async function fetchInstagramMetrics(
       case "reach":
         out.reach = item.values?.[0]?.value ?? item.value ?? 0;
         break;
-      case "likes_count":
-        out.likes = item.values?.[0]?.value ?? item.value ?? 0;
-        break;
-      case "comments_count":
-        out.comments = item.values?.[0]?.value ?? item.value ?? 0;
-        break;
-      case "saves":
+      case "saved":
         out.saves = item.values?.[0]?.value ?? item.value ?? 0;
-        break;
-      case "shares":
-        out.shares = item.values?.[0]?.value ?? item.value ?? 0;
         break;
     }
   }
+
+  // like_count/comments_count are fetched from the media object, not insights.
+  const mediaUrl = `https://graph.facebook.com/v20.0/${mediaId}?fields=like_count,comments_count&access_token=${accessToken}`;
+  const mediaRes = await fetch(mediaUrl);
+  if (!mediaRes.ok) {
+    const body = await mediaRes.text();
+    throw new Error(`Instagram media error: ${mediaRes.status} ${body}`);
+  }
+  const mediaJson = await mediaRes.json();
+  out.likes = mediaJson?.like_count ?? 0;
+  out.comments = mediaJson?.comments_count ?? 0;
+
   return out;
 }
 

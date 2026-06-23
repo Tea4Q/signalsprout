@@ -10,6 +10,7 @@ import {
   View,
   Platform
 } from "react-native";
+import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { radius, spacing, typography } from "@/constants/theme";
@@ -460,10 +461,48 @@ export default function EditPostModal() {
         </View>
 
         {isReadOnly ? (
-          <View style={s.readOnlyBanner}>
-            <Text style={{ ...typography.caption, color: colors.textSecondary }}>
-              This post has been {post.status} and cannot be edited.
-            </Text>
+          <View style={{ gap: spacing.lg }}>
+            <View style={s.readOnlyBanner}>
+              <Text style={{ ...typography.caption, color: colors.textSecondary }}>
+                This post has been {post.status} and cannot be edited.
+                {post.published_at
+                  ? ` Published ${new Date(post.published_at).toLocaleString()}.`
+                  : ""}
+              </Text>
+            </View>
+
+            <View style={s.previewCard}>
+              {(image?.public_url ?? existingImageUrl) ? (
+                <Image
+                  source={{ uri: image?.public_url ?? existingImageUrl ?? "" }}
+                  style={{ width: "100%", height: 320, borderRadius: radius.md, marginBottom: spacing.md }}
+                  contentFit="contain"
+                  accessibilityLabel="Published post media"
+                />
+              ) : null}
+
+              {caption ? (
+                <Text style={{ ...typography.body, color: colors.textPrimary, lineHeight: 22 }}>
+                  {caption}
+                </Text>
+              ) : (
+                <Text style={{ ...typography.body, color: colors.textMuted }}>
+                  No caption.
+                </Text>
+              )}
+
+              {hashtags.length > 0 && (
+                <Text style={{ ...typography.caption, color: colors.secondary, marginTop: spacing.sm }}>
+                  {hashtags.join(" ")}
+                </Text>
+              )}
+
+              {post.destination_url ? (
+                <Text style={{ ...typography.caption, color: colors.secondary, marginTop: spacing.sm }}>
+                  {post.destination_url}
+                </Text>
+              ) : null}
+            </View>
           </View>
         ) : (
           <>
@@ -668,7 +707,7 @@ export default function EditPostModal() {
 
             <View style={{ height: spacing.xl }} />
 
-            {/* Schedule toggle */}}
+            {/* Schedule toggle */}
             <View style={s.scheduleRow}>
               <Text style={{ ...typography.body, color: colors.textPrimary }}>
                 Schedule for later
@@ -727,31 +766,32 @@ export default function EditPostModal() {
               </Text>
             </Pressable>
 
-            <View style={{ height: spacing["3xl"] }} />
-
-            {/* Delete */}
-            <Pressable
-              onPress={handleDelete}
-              disabled={deleting}
-              style={({ pressed }) => [
-                s.deleteButton,
-                { opacity: pressed || deleting ? 0.6 : 1 },
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="Delete this post"
-            >
-              <Text
-                style={{
-                  ...typography.body,
-                  color: colors.danger,
-                  fontWeight: "600",
-                }}
-              >
-                {deleting ? "Deleting…" : "Delete Post"}
-              </Text>
-            </Pressable>
           </>
         )}
+
+        <View style={{ height: spacing["3xl"] }} />
+
+        {/* Delete */}
+        <Pressable
+          onPress={handleDelete}
+          disabled={deleting}
+          style={({ pressed }) => [
+            s.deleteButton,
+            { opacity: pressed || deleting ? 0.6 : 1 },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Delete this post"
+        >
+          <Text
+            style={{
+              ...typography.body,
+              color: colors.danger,
+              fontWeight: "600",
+            }}
+          >
+            {deleting ? "Deleting…" : "Delete Post"}
+          </Text>
+        </Pressable>
       </ScrollView>
       {workspaceId && (
         <AssetPickerSheet

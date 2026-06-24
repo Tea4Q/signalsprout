@@ -1,4 +1,5 @@
 import { MetricCard } from "@/components/analytics/MetricCard";
+import { AccountInsightsSection } from "@/components/analytics/AccountInsightsSection";
 import {
   PerformanceTable,
   type SortKey,
@@ -19,6 +20,10 @@ import {
   getRecommendations,
   type Recommendation,
 } from "@/services/analytics/recommendationService";
+import {
+  getAccountInsights,
+  type AccountInsightCard,
+} from "@/services/analytics/accountInsightsService";
 import {
   getPerformanceByBrand,
   getPerformanceByPlatform,
@@ -64,6 +69,7 @@ export default function AnalyticsScreen() {
   const [topPosts, setTopPosts] = useState<PostPerformanceRow[]>([]);
   const [byBrand, setByBrand] = useState<BrandPerformanceRow[]>([]);
   const [byPlatform, setByPlatform] = useState<PlatformPerformanceRow[]>([]);
+  const [accountInsights, setAccountInsights] = useState<AccountInsightCard[]>([]);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("impressions");
   const [loading, setLoading] = useState(false);
@@ -79,7 +85,7 @@ export default function AnalyticsScreen() {
       if (!workspaceId) return;
       setLoading(true);
       try {
-        const [sum, posts, brands, platforms, recs, cpp, cpa] = await Promise.all([
+        const [sum, posts, brands, platforms, recs, cpp, cpa, insightRows] = await Promise.all([
           getPerformanceSummary(workspaceId, p),
           getTopPosts(workspaceId, p, sortKey),
           getPerformanceByBrand(workspaceId, p),
@@ -87,11 +93,13 @@ export default function AnalyticsScreen() {
           getRecommendations(workspaceId, p),
           getCostPerPost(workspaceId, p),
           getCostPerAsset(workspaceId, p),
+          getAccountInsights(workspaceId, p),
         ]);
         setSummary(sum);
         setTopPosts(posts);
         setByBrand(brands);
         setByPlatform(platforms);
+        setAccountInsights(insightRows);
         setRecommendations(recs);
         setCostPerPost(cpp);
         setCostPerAsset(cpa);
@@ -370,6 +378,12 @@ export default function AnalyticsScreen() {
             />
           </View>
         )}
+
+        {/* Top Posts */}
+        <AccountInsightsSection
+          insights={accountInsights}
+          loading={loading}
+        />
 
         {/* Top Posts */}
         <View style={{ gap: spacing.md }}>

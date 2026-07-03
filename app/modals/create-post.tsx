@@ -145,9 +145,15 @@ export default function CreatePostModal() {
       .then(({ data }) => {
         const opts = (data ?? []).map((a) => ({ label: a.account_name, value: a.id }));
         setSocialAccounts(opts);
-        if (opts.length === 1) setSocialAccountId(opts[0].value);
+        if (opts.length === 1) {
+          setSocialAccountId(opts[0].value);
+          return;
+        }
+        if (opts.every((option) => option.value !== socialAccountId)) {
+          setSocialAccountId(null);
+        }
       });
-  }, [step, workspaceId, form.platform]);
+  }, [step, workspaceId, form.platform, socialAccountId]);
 
   // ── Reset mediaType when platform changes to one that doesn't support video ──
   useEffect(() => {
@@ -289,6 +295,14 @@ export default function CreatePostModal() {
 
     let scheduledAt: string | null = null;
     if (schedule) {
+      if (!socialAccountId) {
+        setError("Please select a social account before scheduling.");
+        return;
+      }
+      if (form.platform === "facebook" && mediaType === "video") {
+        setError("Facebook video publishing is not available yet. Use an image or text post for now.");
+        return;
+      }
       if (scheduledFor <= new Date()) {
         setError("Scheduled time must be in the future.");
         return;
@@ -335,6 +349,14 @@ export default function CreatePostModal() {
     if (!workspaceId) return;
     if (!socialAccountId) {
       setError("Please select a social account before publishing.");
+      return;
+    }
+    if (form.platform === "facebook" && mediaType === "video") {
+      setError("Facebook video publishing is not available yet. Use an image or text post for now.");
+      return;
+    }
+    if (form.platform === "instagram" && mediaType === "video") {
+      setError("Instagram Reels are only available through scheduled publishing right now.");
       return;
     }
     setError(null);
@@ -619,7 +641,7 @@ export default function CreatePostModal() {
                         Product shot active
                       </Text>
                       <Text style={{ ...typography.caption, color: colors.textMuted }}>
-                        Your brand's product will be used as a visual reference
+                        Your brand&apos;s product will be used as a visual reference
                       </Text>
                     </View>
                   </View>

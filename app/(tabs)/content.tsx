@@ -183,7 +183,7 @@ export default function ContentScreen() {
             No posts yet
           </Text>
           <Text style={{ ...typography.body, color: colors.textSecondary, textAlign: "center" }}>
-            Tap "New" to generate your first AI-powered post.
+            Tap &quot;New&quot; to generate your first AI-powered post.
           </Text>
         </View>
       ) : (

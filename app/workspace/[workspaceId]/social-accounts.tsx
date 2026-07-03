@@ -57,6 +57,19 @@ function generateState(): string {
     .replace(/=/g, "");
 }
 
+function formatAccountIdentifier(account: SocialAccount): string | null {
+  if (!account.account_identifier) return null;
+  if (account.platform === "instagram") {
+    return account.account_identifier.startsWith("@")
+      ? account.account_identifier
+      : `@${account.account_identifier}`;
+  }
+  if (account.platform === "facebook") {
+    return `Page ID ${account.account_identifier}`;
+  }
+  return account.account_identifier;
+}
+
 // ─── Screen ──────────────────────────────────────────────────────────────────
 
 export default function SocialAccountsScreen() {
@@ -70,6 +83,7 @@ export default function SocialAccountsScreen() {
   const [connecting, setConnecting] = useState<PlatformId | null>(null);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [confirmAccount, setConfirmAccount] = useState<SocialAccount | null>(null);
+  const [managePlatformId, setManagePlatformId] = useState<PlatformId | null>(null);
   const [instagramSetupVisible, setInstagramSetupVisible] = useState(false);
   const [facebookSetupVisible, setFacebookSetupVisible] = useState(false);
   const connectingRef = useRef(false);
@@ -273,6 +287,13 @@ export default function SocialAccountsScreen() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   const connectedCount = accounts.length;
+  const connectedPlatforms = new Set(accounts.map((account) => account.platform)).size;
+  const managedPlatform = managePlatformId
+    ? PLATFORM_LIST.find((platform) => platform.id === managePlatformId) ?? null
+    : null;
+  const managedAccounts = managePlatformId
+    ? accounts.filter((account) => account.platform === managePlatformId)
+    : [];
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
@@ -292,7 +313,7 @@ export default function SocialAccountsScreen() {
             <Text style={{ ...typography.caption, color: colors.textMuted }}>
               {connectedCount === 0
                 ? "No platforms connected yet"
-                : `${connectedCount} platform${connectedCount !== 1 ? "s" : ""} connected`}
+                : `${connectedCount} account${connectedCount !== 1 ? "s" : ""} across ${connectedPlatforms} platform${connectedPlatforms !== 1 ? "s" : ""}`}
             </Text>
           )}
         </View>
@@ -304,16 +325,19 @@ export default function SocialAccountsScreen() {
         ) : (
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.md }}>
             {PLATFORM_LIST.map((platform) => {
-              const account = accounts.find((a) => a.platform === platform.id) ?? null;
+              const platformAccounts = accounts.filter((a) => a.platform === platform.id);
+              const account = platformAccounts[0] ?? null;
               return (
                 <View key={platform.id} style={{ width: "48%", minWidth: 148 }}>
                   <SocialAccountCard
                     platform={platform}
                     account={account}
+                    connectedCount={platformAccounts.length}
                     connecting={connecting === platform.id}
                     disconnecting={!!account && disconnecting === account.id}
                     onConnect={() => handleConnect(platform.id)}
                     onDisconnect={() => account && handleDisconnect(account)}
+                    onManage={account ? () => setManagePlatformId(platform.id) : undefined}
                   />
                 </View>
               );
@@ -342,6 +366,71 @@ export default function SocialAccountsScreen() {
           setTimeout(() => doOAuthConnect("facebook"), 0);
         }}
       />
+      <AppModal
+        visible={!!managePlatformId}
+        onClose={() => setManagePlatformId(null)}
+        title={managedPlatform ? `${managedPlatform.label} accounts` : "Manage accounts"}
+      >
+        <View style={{ gap: spacing.md }}>
+          {managedAccounts.length === 0 ? (
+            <Text style={{ ...typography.body, color: colors.textSecondary }}>
+              No connected accounts for this platform.
+            </Text>
+          ) : (
+            managedAccounts.map((account) => {
+              const identifier = formatAccountIdentifier(account);
+              return (
+                <View
+                  key={account.id}
+                  style={{
+                    gap: spacing.sm,
+                    padding: spacing.lg,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: 16,
+                    backgroundColor: colors.surfaceAlt,
+                  }}
+                >
+                  <View style={{ gap: 4 }}>
+                    <Text style={{ ...typography.body, color: colors.textPrimary }}>
+                      {account.account_name}
+                    </Text>
+                    {!!identifier && (
+                      <Text style={{ ...typography.caption, color: colors.textMuted }}>
+                        {identifier}
+                      </Text>
+                    )}
+                  </View>
+                  <AppButton
+                    label={disconnecting === account.id ? "Disconnecting…" : "Disconnect"}
+                    variant="destructive"
+                    onPress={() => {
+                      setManagePlatformId(null);
+                      handleDisconnect(account);
+                    }}
+                    disabled={disconnecting === account.id}
+                    loading={disconnecting === account.id}
+                  />
+                </View>
+              );
+            })
+          )}
+          {!!managedPlatform && (
+            <AppButton
+              label={managedPlatform.id === "facebook" || managedPlatform.id === "instagram" ? "Sync accounts" : "Reconnect"}
+              onPress={() => {
+                setManagePlatformId(null);
+                setTimeout(() => handleConnect(managedPlatform.id), 0);
+              }}
+            />
+          )}
+          <AppButton
+            label="Close"
+            variant="secondary"
+            onPress={() => setManagePlatformId(null)}
+          />
+        </View>
+      </AppModal>
       <AppModal
         visible={!!confirmAccount}
         onClose={() => setConfirmAccount(null)}

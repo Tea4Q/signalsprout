@@ -8,7 +8,7 @@ type PostStatus = Database["public"]["Enums"]["post_status"];
 
 export interface PostFilters {
   brand_id?: string;
-  platform?: "instagram" | "pinterest";
+  platform?: Database["public"]["Enums"]["platform_type"];
   status?: PostStatus;
 }
 

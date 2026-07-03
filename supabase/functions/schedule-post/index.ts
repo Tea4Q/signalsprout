@@ -89,6 +89,52 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    if (!post.social_account_id) {
+      return new Response(
+        JSON.stringify({ error: "Select a social account before scheduling this post" }),
+        {
+          status: 422,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    const { data: socialAccount, error: socialAccountError } = await serviceClient
+      .from("social_accounts")
+      .select("id, workspace_id, platform, status")
+      .eq("id", post.social_account_id)
+      .single();
+
+    if (socialAccountError || !socialAccount) {
+      return new Response(
+        JSON.stringify({ error: "Selected social account was not found" }),
+        {
+          status: 422,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    if (socialAccount.workspace_id !== post.workspace_id || socialAccount.platform !== post.platform) {
+      return new Response(
+        JSON.stringify({ error: "Selected social account does not match this post's workspace or platform" }),
+        {
+          status: 422,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    if (socialAccount.status !== "active") {
+      return new Response(
+        JSON.stringify({ error: "Selected social account is no longer active" }),
+        {
+          status: 422,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
     // Update post status + scheduled_for
     const { error: updateError } = await serviceClient
       .from("posts")

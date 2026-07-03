@@ -56,12 +56,18 @@ export function ScheduleForm({
       .select("id, account_name, platform")
       .eq("workspace_id", workspaceId)
       .eq("platform", platform)
+      .eq("status", "active")
       .then(({ data }) => {
-        setAccounts(
-          (data ?? []).map((a) => ({ label: a.account_name, value: a.id })),
-        );
+        const options = (data ?? []).map((a) => ({
+          label: a.account_name,
+          value: a.id,
+        }));
+        setAccounts(options);
+        if (options.length === 1 && !socialAccountId) {
+          onChangeSocialAccount(options[0].value);
+        }
       });
-  }, [workspaceId, platform]);
+  }, [workspaceId, platform, socialAccountId, onChangeSocialAccount]);
 
   const formattedDate = scheduledFor.toLocaleDateString(undefined, {
     weekday: "short",

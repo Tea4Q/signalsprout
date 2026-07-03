@@ -11,19 +11,36 @@ import { useState } from "react";
 interface SocialAccountCardProps {
   platform: PlatformConfig;
   account: SocialAccount | null;
+  connectedCount?: number;
   connecting: boolean;
   disconnecting: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
+  onManage?: () => void;
+}
+
+function formatAccountIdentifier(account: SocialAccount): string | null {
+  if (!account.account_identifier) return null;
+  if (account.platform === "instagram") {
+    return account.account_identifier.startsWith("@")
+      ? account.account_identifier
+      : `@${account.account_identifier}`;
+  }
+  if (account.platform === "facebook") {
+    return `Page ID ${account.account_identifier}`;
+  }
+  return account.account_identifier;
 }
 
 export function SocialAccountCard({
   platform,
   account,
+  connectedCount = account ? 1 : 0,
   connecting,
   disconnecting,
   onConnect,
   onDisconnect,
+  onManage,
 }: SocialAccountCardProps) {
   const { colors } = useTheme();
   const [avatarError, setAvatarError] = useState(false);
@@ -31,6 +48,8 @@ export function SocialAccountCard({
   const isConnected = !!account;
   const expired = account ? isTokenExpired(account) : false;
   const expiringSoon = account ? isTokenExpiringSoon(account) : false;
+  const additionalCount = Math.max(connectedCount - 1, 0);
+  const formattedIdentifier = account ? formatAccountIdentifier(account) : null;
 
   return (
     <View
@@ -100,11 +119,21 @@ export function SocialAccountCard({
               style={{ ...typography.micro, color: colors.textPrimary, flex: 1 }}
               numberOfLines={1}
             >
-              {account.account_identifier
-                ? `@${account.account_identifier}`
-                : account.account_name}
+              {account.account_name}
             </Text>
           </View>
+
+          {!!formattedIdentifier && (
+            <Text style={{ ...typography.micro, color: colors.textMuted }} numberOfLines={1}>
+              {formattedIdentifier}
+            </Text>
+          )}
+
+          {additionalCount > 0 && (
+            <Text style={{ ...typography.micro, color: colors.textMuted }}>
+              {`+${additionalCount} more connected`}
+            </Text>
+          )}
 
           {/* Token status */}
           {expired ? (
@@ -114,6 +143,8 @@ export function SocialAccountCard({
           ) : (
             <AppBadge label="Connected" variant="success" />
           )}
+
+          {connectedCount > 1 && <AppBadge label={`${connectedCount} accounts`} variant="info" />}
         </View>
       ) : (
         <Text style={{ ...typography.micro, color: colors.textMuted }}>
@@ -124,50 +155,55 @@ export function SocialAccountCard({
       {/* Action button */}
       {isConnected ? (
         <View style={{ gap: spacing.xs }}>
-          {expired && (
-            <Pressable
-              onPress={onConnect}
-              disabled={connecting || disconnecting}
-              accessibilityRole="button"
-              accessibilityLabel={`Reconnect ${platform.label}`}
-              style={({ pressed }) => ({
-                paddingVertical: spacing.sm,
-                paddingHorizontal: spacing.md,
-                borderRadius: radius.sm,
-                backgroundColor: platform.color,
-                alignItems: "center",
-                opacity: pressed || connecting ? 0.7 : 1,
-              })}
-            >
-              {connecting ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={{ ...typography.micro, color: "#fff", fontWeight: "600" }}>
-                  Reconnect
-                </Text>
-              )}
-            </Pressable>
-          )}
           <Pressable
-            onPress={onDisconnect}
+            onPress={onConnect}
             disabled={connecting || disconnecting}
             accessibilityRole="button"
-            accessibilityLabel={`Disconnect ${platform.label}`}
+            accessibilityLabel={`${expired ? "Reconnect" : "Sync"} ${platform.label}`}
+            style={({ pressed }) => ({
+              paddingVertical: spacing.sm,
+              paddingHorizontal: spacing.md,
+              borderRadius: radius.sm,
+              backgroundColor: platform.color,
+              alignItems: "center",
+              opacity: pressed || connecting ? 0.7 : 1,
+            })}
+          >
+            {connecting ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={{ ...typography.micro, color: "#fff", fontWeight: "600" }}>
+                {expired ? "Reconnect" : "Sync Accounts"}
+              </Text>
+            )}
+          </Pressable>
+
+          <Pressable
+            onPress={onManage ?? onDisconnect}
+            disabled={connecting || disconnecting}
+            accessibilityRole="button"
+            accessibilityLabel={onManage ? `Manage ${platform.label}` : `Disconnect ${platform.label}`}
             style={({ pressed }) => ({
               paddingVertical: spacing.sm,
               paddingHorizontal: spacing.md,
               borderRadius: radius.sm,
               borderWidth: 1,
-              borderColor: colors.danger,
+              borderColor: onManage ? colors.border : colors.danger,
               alignItems: "center",
               opacity: pressed || disconnecting ? 0.7 : 1,
             })}
           >
             {disconnecting ? (
-              <ActivityIndicator size="small" color={colors.danger} />
+              <ActivityIndicator size="small" color={onManage ? colors.textSecondary : colors.danger} />
             ) : (
-              <Text style={{ ...typography.micro, color: colors.danger, fontWeight: "600" }}>
-                Disconnect
+              <Text
+                style={{
+                  ...typography.micro,
+                  color: onManage ? colors.textPrimary : colors.danger,
+                  fontWeight: "600",
+                }}
+              >
+                {onManage ? "Manage" : "Disconnect"}
               </Text>
             )}
           </Pressable>

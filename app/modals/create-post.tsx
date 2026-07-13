@@ -27,11 +27,15 @@ import { uploadExternalImage,
   uploadVideo,
   setAsCharacterReference,
   getCharacterReference,
+  getProductShot,
+  getAssetPublicUrl,
 } from "@/services/content/assetService";
+import { AppTextarea } from "@/components/ui/AppTextarea";
 import { AssetPickerSheet } from "@/components/assets/AssetPickerSheet";
 import { AppButton } from "@/components/ui/AppButton";
 import { AppInput } from "@/components/ui/AppInput";
 import { AppSelect, SelectOption } from "@/components/ui/AppSelect";
+import { ScheduleForm } from "@/components/calendar/ScheduleForm";
 import { supabase } from "@/lib/supabase";
 
 const TOTAL_STEPS = 4;
@@ -44,6 +48,13 @@ const DEFAULT_FORM: PromptBuilderValues = {
   cta: "",
   source_material: "",
 };
+
+function defaultScheduleDate(): Date {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  d.setHours(10, 0, 0, 0);
+  return d;
+}
 
 export default function CreatePostModal() {
   const { colors } = useTheme();
@@ -59,6 +70,13 @@ export default function CreatePostModal() {
   const [destinationUrl, setDestinationUrl] = useState("");
   const [isCharacterRef, setIsCharacterRef] = useState(false);
   const [existingCharRef, setExistingCharRef] = useState(false);
+  const [imagePrompt, setImagePrompt] = useState("");
+  const [charRefUrl, setCharRefUrl] = useState<string | null>(null);
+
+  // Brand details for the creative preview
+  const [brandName, setBrandName] = useState<string | undefined>(undefined);
+  const [brandAvatarUrl, setBrandAvatarUrl] = useState<string | null>(null);
+  const [productShotUrl, setProductShotUrl] = useState<string | null>(null);
 
   // "image" | "video" — only exposed for instagram/tiktok platforms
   const [mediaType, setMediaType] = useState<"image" | "video">("image");
@@ -72,14 +90,48 @@ export default function CreatePostModal() {
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isScheduled, setIsScheduled] = useState(false);
-  const [scheduledFor, setScheduledFor] = useState("");
+  const [scheduledFor, setScheduledFor] = useState<Date>(defaultScheduleDate());
   const [socialAccountId, setSocialAccountId] = useState<string | null>(null);
   const [socialAccounts, setSocialAccounts] = useState<SelectOption[]>([]);
   const [pinTitle, setPinTitle] = useState("");
   const [newHashtag, setNewHashtag] = useState("");
-  const [imagePrompt, setImagePrompt] = useState("");
 
   const s = styles(colors);
+
+  // ── Fetch brand details (name, website, social avatar) for preview ────────
+  useEffect(() => {
+    if (!form.brand_id || !workspaceId) {
+      setBrandName(undefined);
+      setBrandAvatarUrl(null);
+      setProductShotUrl(null);
+      return;
+    }
+    // Fetch brand name + website_url, social account avatar, and product shot in parallel
+    Promise.all([
+      supabase
+        .from("brands")
+        .select("name, website_url")
+        .eq("id", form.brand_id)
+        .single(),
+      supabase
+        .from("social_accounts")
+        .select("avatar_url, account_name")
+        .eq("workspace_id", workspaceId)
+        .eq("brand_id", form.brand_id)
+        .eq("platform", form.platform)
+        .eq("status", "active")
+        .maybeSingle(),
+      getProductShot(form.brand_id),
+    ]).then(([{ data: brand }, { data: social }, productShot]) => {
+      if (brand) {
+        setBrandName(social?.account_name ?? brand.name);
+        // Pre-populate destination URL with brand website only if user hasn't typed one yet
+        setDestinationUrl((prev) => (prev === "" && brand.website_url ? brand.website_url : prev));
+      }
+      setBrandAvatarUrl(social?.avatar_url ?? null);
+      setProductShotUrl(productShot ? getAssetPublicUrl(productShot.file_path) : null);
+    });
+  }, [form.brand_id, form.platform, workspaceId]);
 
   // ── Step 4: load social accounts for the selected platform ───────────────
   useEffect(() => {
@@ -93,9 +145,15 @@ export default function CreatePostModal() {
       .then(({ data }) => {
         const opts = (data ?? []).map((a) => ({ label: a.account_name, value: a.id }));
         setSocialAccounts(opts);
-        if (opts.length === 1) setSocialAccountId(opts[0].value);
+        if (opts.length === 1) {
+          setSocialAccountId(opts[0].value);
+          return;
+        }
+        if (opts.every((option) => option.value !== socialAccountId)) {
+          setSocialAccountId(null);
+        }
       });
-  }, [step, workspaceId, form.platform]);
+  }, [step, workspaceId, form.platform, socialAccountId]);
 
   // ── Reset mediaType when platform changes to one that doesn't support video ──
   useEffect(() => {
@@ -126,6 +184,7 @@ export default function CreatePostModal() {
       setContent(result);
       setCaption(result.caption);
       setHashtags(result.hashtags);
+      setImagePrompt(result.image_prompt);
       setStep(2);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Generation failed.");
@@ -144,32 +203,24 @@ export default function CreatePostModal() {
     if (step === 3 && form.brand_id) {
       getCharacterReference(form.brand_id).then((ref) => {
         setExistingCharRef(ref !== null);
+        setCharRefUrl(ref ? getAssetPublicUrl(ref.file_path) : null);
       });
     }
   }, [step, form.brand_id]);
 
-  // ── Step 2: pre-fill image prompt as soon as AI content is generated ──────
-  React.useEffect(() => {
-    if (content?.image_prompt) {
-      setImagePrompt(content.image_prompt);
-    }
-  }, [content?.image_prompt]);
-
-  // ── Step 3: generate / regenerate image ─────────────────────────────────
+  // ── Step 3: generate image ────────────────────────────────────────────────
   const handleGenerateImage = useCallback(async () => {
-    if (!workspaceId) return;
-    if (!imagePrompt.trim()) {
-      setError("Please enter an image prompt.");
-      return;
-    }
+    if (!workspaceId || !content) return;
     setError(null);
     setGeneratingImage(true);
     try {
       const result = await generateImage(
-        imagePrompt.trim(),
+        imagePrompt || content.image_prompt,
         form.platform,
         form.brand_id,
         workspaceId,
+        charRefUrl ?? undefined,
+        productShotUrl ?? undefined,
       );
       setImage(result);
     } catch (e: unknown) {
@@ -177,22 +228,20 @@ export default function CreatePostModal() {
     } finally {
       setGeneratingImage(false);
     }
-  }, [imagePrompt, form.platform, form.brand_id, workspaceId]);
+  }, [imagePrompt, charRefUrl, productShotUrl, content, form.platform, form.brand_id, workspaceId]);
 
   const handleRegenerateImage = useCallback(async () => {
-    if (!workspaceId) return;
-    if (!imagePrompt.trim()) {
-      setError("Please enter an image prompt.");
-      return;
-    }
+    if (!workspaceId || !content) return;
     setError(null);
     setGeneratingImage(true);
     try {
       const result = await generateImage(
-        imagePrompt.trim(),
+        imagePrompt || content.image_prompt,
         form.platform,
         form.brand_id,
         workspaceId,
+        charRefUrl ?? undefined,
+        productShotUrl ?? undefined,
       );
       setImage(result);
     } catch (e: unknown) {
@@ -200,7 +249,7 @@ export default function CreatePostModal() {
     } finally {
       setGeneratingImage(false);
     }
-  }, [imagePrompt, form.platform, form.brand_id, workspaceId]);
+  }, [imagePrompt, charRefUrl, productShotUrl, content, form.platform, form.brand_id, workspaceId]);
 
   // ── Step 3: upload video from device ─────────────────────────────────────
   const handleUploadVideo = useCallback(async () => {
@@ -246,20 +295,19 @@ export default function CreatePostModal() {
 
     let scheduledAt: string | null = null;
     if (schedule) {
-      if (!scheduledFor.trim()) {
-        setError("Please enter a scheduled date and time.");
+      if (!socialAccountId) {
+        setError("Please select a social account before scheduling.");
         return;
       }
-      const parsed = new Date(scheduledFor.trim());
-      if (isNaN(parsed.getTime())) {
-        setError("Invalid date — use format YYYY-MM-DD HH:MM.");
+      if (form.platform === "facebook" && mediaType === "video") {
+        setError("Facebook video publishing is not available yet. Use an image or text post for now.");
         return;
       }
-      if (parsed <= new Date()) {
+      if (scheduledFor <= new Date()) {
         setError("Scheduled time must be in the future.");
         return;
       }
-      scheduledAt = parsed.toISOString();
+      scheduledAt = scheduledFor.toISOString();
     }
 
     setError(null);
@@ -301,6 +349,14 @@ export default function CreatePostModal() {
     if (!workspaceId) return;
     if (!socialAccountId) {
       setError("Please select a social account before publishing.");
+      return;
+    }
+    if (form.platform === "facebook" && mediaType === "video") {
+      setError("Facebook video publishing is not available yet. Use an image or text post for now.");
+      return;
+    }
+    if (form.platform === "instagram" && mediaType === "video") {
+      setError("Instagram Reels are only available through scheduled publishing right now.");
       return;
     }
     setError(null);
@@ -479,12 +535,13 @@ export default function CreatePostModal() {
               autoCorrect={false}
             />
 
-            {/* Image prompt — editable so the user can tweak before generating */}
-            <AppInput
+            {/* Image prompt — editable before generating */}
+            <AppTextarea
               label="Image Prompt"
               value={imagePrompt}
               onChangeText={setImagePrompt}
-              placeholder="Describe the image to generate…"
+              placeholder="Describe the image you want to generate…"
+              numberOfLines={4}
             />
 
             <AppButton label="Continue to Image" onPress={handleToImageStep} />
@@ -494,8 +551,8 @@ export default function CreatePostModal() {
         {/* ── Step 3: Generate Image / Upload Video ── */}
         {step === 3 && content && (
           <View style={{ gap: spacing.xl }}>
-            {/* Media type toggle — Instagram & TikTok only */}
-            {(form.platform === "instagram" || form.platform === "tiktok") && (
+            {/* Media type toggle — Instagram, TikTok & Facebook */}
+            {(form.platform === "instagram" || form.platform === "tiktok" || form.platform === "facebook") && (
               <View style={[s.mediaTypeTabs, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
                 {(["image", "video"] as const).map((type) => (
                   <Pressable
@@ -520,7 +577,7 @@ export default function CreatePostModal() {
                         color: mediaType === type ? "#fff" : colors.textSecondary,
                       }}
                     >
-                      {type === "image" ? "Image" : "Video / Reel"}
+                      {type === "image" ? "Image" : form.platform === "facebook" ? "Video" : "Video / Reel"}
                     </Text>
                   </Pressable>
                 ))}
@@ -530,48 +587,123 @@ export default function CreatePostModal() {
             {/* ── Image tab ── */}
             {mediaType === "image" && (
               <>
+                {/* Character reference banner */}
+                {charRefUrl && (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: spacing.md,
+                      padding: spacing.md,
+                      backgroundColor: colors.surfaceAlt,
+                      borderRadius: radius.md,
+                      borderWidth: 1,
+                      borderColor: colors.primary,
+                    }}
+                  >
+                    <Image
+                      source={{ uri: charRefUrl }}
+                      style={{ width: 48, height: 48, borderRadius: radius.sm }}
+                      resizeMode="cover"
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ ...typography.caption, fontWeight: "600", color: colors.primary }}>
+                        Character reference active
+                      </Text>
+                      <Text style={{ ...typography.caption, color: colors.textMuted }}>
+                        Your brand character will be included in the generated image
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* Product shot banner */}
+                {productShotUrl && (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: spacing.md,
+                      padding: spacing.md,
+                      backgroundColor: colors.surfaceAlt,
+                      borderRadius: radius.md,
+                      borderWidth: 1,
+                      borderColor: colors.secondary,
+                    }}
+                  >
+                    <Image
+                      source={{ uri: productShotUrl }}
+                      style={{ width: 48, height: 48, borderRadius: radius.sm }}
+                      resizeMode="cover"
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ ...typography.caption, fontWeight: "600", color: colors.secondary }}>
+                        Product shot active
+                      </Text>
+                      <Text style={{ ...typography.caption, color: colors.textMuted }}>
+                        Your brand&apos;s product will be used as a visual reference
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
                 <CreativePreview
                   publicUrl={image?.public_url ?? null}
                   platform={form.platform}
                   loading={generatingImage}
+                  brandName={brandName}
+                  avatarUrl={brandAvatarUrl}
                 />
-                <AppInput
-                  label="Image Prompt"
-                  value={imagePrompt}
-                  onChangeText={setImagePrompt}
-                  placeholder="Describe the image to generate…"
-                />
-                <View style={{ flexDirection: "row", gap: spacing.sm }}>
-                  <View style={{ flex: 1 }}>
+
+                {!image ? (
+                  <View style={{ gap: spacing.md }}>
                     <AppButton
-                      label={generatingImage ? "Generating…" : image ? "Regenerate" : "Generate"}
+                      label={generatingImage ? "Generating Image…" : "Generate Image"}
                       onPress={handleGenerateImage}
-                      disabled={generatingImage || uploadingImage || !imagePrompt.trim()}
-                      loading={generatingImage}
-                      variant={image ? "secondary" : "primary"}
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <AppButton
-                      label={uploadingImage ? "Uploading…" : "Upload Image"}
-                      onPress={handleUploadImage}
                       disabled={generatingImage || uploadingImage}
+                      loading={generatingImage}
+                    />
+                    <AppButton
+                      label={uploadingImage ? "Uploading…" : "Upload from Device"}
+                      onPress={handleUploadImage}
+                      disabled={uploadingImage || generatingImage}
                       loading={uploadingImage}
                       variant="secondary"
                     />
+                    <AppButton
+                      label="Use from Library"
+                      onPress={() => setShowLibraryPicker(true)}
+                      disabled={generatingImage || uploadingImage}
+                      variant="secondary"
+                    />
                   </View>
-                </View>
-                <AppButton
-                  label="Use from Library"
-                  onPress={() => setShowLibraryPicker(true)}
-                  disabled={generatingImage || uploadingImage}
-                  variant="secondary"
-                />
-                {image && (
-                  <AppButton
-                    label="Continue to Review"
-                    onPress={handleToReview}
-                  />
+                ) : (
+                  <View style={{ gap: spacing.md }}>
+                    <AppButton
+                      label="Continue to Review"
+                      onPress={handleToReview}
+                    />
+                    <AppButton
+                      label={generatingImage ? "Regenerating…" : "Regenerate"}
+                      onPress={handleRegenerateImage}
+                      disabled={generatingImage || uploadingImage}
+                      loading={generatingImage}
+                      variant="secondary"
+                    />
+                    <AppButton
+                      label={uploadingImage ? "Uploading…" : "Upload Different Image"}
+                      onPress={handleUploadImage}
+                      disabled={uploadingImage || generatingImage}
+                      loading={uploadingImage}
+                      variant="secondary"
+                    />
+                    <AppButton
+                      label="Use from Library"
+                      onPress={() => setShowLibraryPicker(true)}
+                      disabled={generatingImage || uploadingImage}
+                      variant="secondary"
+                    />
+                  </View>
                 )}
 
                 {image && (
@@ -646,6 +778,8 @@ export default function CreatePostModal() {
                       <Text style={{ ...typography.caption, color: colors.textMuted, textAlign: "center" }}>
                         {form.platform === "tiktok"
                           ? "Select a video file to post on TikTok"
+                          : form.platform === "facebook"
+                          ? "Select a video file to post on Facebook"
                           : "Select a video file to post as an Instagram Reel"}
                       </Text>
                     </View>
@@ -887,14 +1021,15 @@ export default function CreatePostModal() {
               />
             </View>
 
-            {isScheduled && (
-              <AppInput
-                label="Publish at (YYYY-MM-DD HH:MM)"
-                value={scheduledFor}
-                onChangeText={setScheduledFor}
-                placeholder="2026-05-01 09:00"
-                keyboardType="numbers-and-punctuation"
-                autoCapitalize="none"
+            {isScheduled && workspaceId && (
+              <ScheduleForm
+                workspaceId={workspaceId}
+                platform={form.platform}
+                scheduledFor={scheduledFor}
+                socialAccountId={socialAccountId}
+                onChangeDate={setScheduledFor}
+                onChangeSocialAccount={setSocialAccountId}
+                hideAccountSelector
               />
             )}
 

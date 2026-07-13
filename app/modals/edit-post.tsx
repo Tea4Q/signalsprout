@@ -10,6 +10,7 @@ import {
   View,
   Platform
 } from "react-native";
+import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { radius, spacing, typography } from "@/constants/theme";
@@ -22,6 +23,7 @@ import { ScheduleForm } from "@/components/calendar/ScheduleForm";
 import { AppButton } from "@/components/ui/AppButton";
 import { AppInput } from "@/components/ui/AppInput";
 import { AppBadge, BadgeVariant } from "@/components/ui/AppBadge";
+import { AppSelect, SelectOption } from "@/components/ui/AppSelect";
 import {
   getPost,
   updatePost,
@@ -81,6 +83,7 @@ export default function EditPostModal() {
   const [isScheduled, setIsScheduled] = useState(false);
   const [scheduledFor, setScheduledFor] = useState<Date>(defaultScheduleDate());
   const [socialAccountId, setSocialAccountId] = useState<string | null>(null);
+  const [socialAccounts, setSocialAccounts] = useState<SelectOption[]>([]);
 
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -114,6 +117,20 @@ export default function EditPostModal() {
         setIsScheduled(scheduled);
         if (p.scheduled_for) setScheduledFor(new Date(p.scheduled_for));
         if (p.social_account_id) setSocialAccountId(p.social_account_id);
+
+        // Load social accounts for the post's platform
+        supabase
+          .from("social_accounts")
+          .select("id, account_name")
+          .eq("workspace_id", workspaceId ?? "")
+          .eq("platform", p.platform)
+          .eq("status", "active")
+          .then(({ data }) => {
+            const opts = (data ?? []).map((a) => ({ label: a.account_name, value: a.id }));
+            setSocialAccounts(opts);
+            // Auto-select if there's only one
+            if (!p.social_account_id && opts.length === 1) setSocialAccountId(opts[0].value);
+          });
 
         // Load existing post assets
         const { data: assetData } = await supabase
@@ -326,27 +343,32 @@ export default function EditPostModal() {
 
   const handleDelete = useCallback(() => {
     if (!postId || !post) return;
-    Alert.alert(
-      "Delete Post",
-      "This post will be permanently deleted. This cannot be undone.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            setDeleting(true);
-            try {
-              await deletePost(postId);
-              router.back();
-            } catch (e: unknown) {
-              setError(e instanceof Error ? e.message : "Delete failed.");
-              setDeleting(false);
-            }
-          },
-        },
-      ],
-    );
+
+    const doDelete = async () => {
+      setDeleting(true);
+      try {
+        await deletePost(postId);
+        router.back();
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : "Delete failed.");
+        setDeleting(false);
+      }
+    };
+
+    if (Platform.OS === "web") {
+      if (window.confirm("Delete this post permanently? This cannot be undone.")) {
+        doDelete();
+      }
+    } else {
+      Alert.alert(
+        "Delete Post",
+        "This post will be permanently deleted. This cannot be undone.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Delete", style: "destructive", onPress: doDelete },
+        ],
+      );
+    }
   }, [postId, post, router]);
 
   if (!workspaceId || loadingPost) {
@@ -439,10 +461,48 @@ export default function EditPostModal() {
         </View>
 
         {isReadOnly ? (
-          <View style={s.readOnlyBanner}>
-            <Text style={{ ...typography.caption, color: colors.textSecondary }}>
-              This post has been {post.status} and cannot be edited.
-            </Text>
+          <View style={{ gap: spacing.lg }}>
+            <View style={s.readOnlyBanner}>
+              <Text style={{ ...typography.caption, color: colors.textSecondary }}>
+                This post has been {post.status} and cannot be edited.
+                {post.published_at
+                  ? ` Published ${new Date(post.published_at).toLocaleString()}.`
+                  : ""}
+              </Text>
+            </View>
+
+            <View style={s.previewCard}>
+              {(image?.public_url ?? existingImageUrl) ? (
+                <Image
+                  source={{ uri: image?.public_url ?? existingImageUrl ?? "" }}
+                  style={{ width: "100%", height: 320, borderRadius: radius.md, marginBottom: spacing.md }}
+                  contentFit="contain"
+                  accessibilityLabel="Published post media"
+                />
+              ) : null}
+
+              {caption ? (
+                <Text style={{ ...typography.body, color: colors.textPrimary, lineHeight: 22 }}>
+                  {caption}
+                </Text>
+              ) : (
+                <Text style={{ ...typography.body, color: colors.textMuted }}>
+                  No caption.
+                </Text>
+              )}
+
+              {hashtags.length > 0 && (
+                <Text style={{ ...typography.caption, color: colors.secondary, marginTop: spacing.sm }}>
+                  {hashtags.join(" ")}
+                </Text>
+              )}
+
+              {post.destination_url ? (
+                <Text style={{ ...typography.caption, color: colors.secondary, marginTop: spacing.sm }}>
+                  {post.destination_url}
+                </Text>
+              ) : null}
+            </View>
           </View>
         ) : (
           <>
@@ -636,6 +696,17 @@ export default function EditPostModal() {
 
             <View style={{ height: spacing.xl }} />
 
+            {/* Social account — always visible so Post Now works without scheduling */}
+            <AppSelect
+              label={`${post.platform.charAt(0).toUpperCase() + post.platform.slice(1)} Account`}
+              value={socialAccountId}
+              options={socialAccounts}
+              onChange={setSocialAccountId}
+              placeholder="Select account"
+            />
+
+            <View style={{ height: spacing.xl }} />
+
             {/* Schedule toggle */}
             <View style={s.scheduleRow}>
               <Text style={{ ...typography.body, color: colors.textPrimary }}>
@@ -658,6 +729,7 @@ export default function EditPostModal() {
                   socialAccountId={socialAccountId}
                   onChangeDate={setScheduledFor}
                   onChangeSocialAccount={setSocialAccountId}
+                  hideAccountSelector
                 />
               </View>
             )}
@@ -694,31 +766,32 @@ export default function EditPostModal() {
               </Text>
             </Pressable>
 
-            <View style={{ height: spacing["3xl"] }} />
-
-            {/* Delete */}
-            <Pressable
-              onPress={handleDelete}
-              disabled={deleting}
-              style={({ pressed }) => [
-                s.deleteButton,
-                { opacity: pressed || deleting ? 0.6 : 1 },
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="Delete this post"
-            >
-              <Text
-                style={{
-                  ...typography.body,
-                  color: colors.danger,
-                  fontWeight: "600",
-                }}
-              >
-                {deleting ? "Deleting…" : "Delete Post"}
-              </Text>
-            </Pressable>
           </>
         )}
+
+        <View style={{ height: spacing["3xl"] }} />
+
+        {/* Delete */}
+        <Pressable
+          onPress={handleDelete}
+          disabled={deleting}
+          style={({ pressed }) => [
+            s.deleteButton,
+            { opacity: pressed || deleting ? 0.6 : 1 },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Delete this post"
+        >
+          <Text
+            style={{
+              ...typography.body,
+              color: colors.danger,
+              fontWeight: "600",
+            }}
+          >
+            {deleting ? "Deleting…" : "Delete Post"}
+          </Text>
+        </Pressable>
       </ScrollView>
       {workspaceId && (
         <AssetPickerSheet

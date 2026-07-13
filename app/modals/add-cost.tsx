@@ -8,7 +8,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { radius, spacing, typography } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { useWorkspace } from "@/context/workspace-context";
@@ -43,6 +43,15 @@ export default function AddCostModal() {
     Partial<Record<keyof CostEntryFormValues, string>>
   >({});
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [sourcesRefreshKey, setSourcesRefreshKey] = useState(0);
+
+  // Re-fetch cost sources each time this screen regains focus (e.g. after
+  // the user returns from the Add Cost Source modal).
+  useFocusEffect(
+    useCallback(() => {
+      setSourcesRefreshKey((k) => k + 1);
+    }, []),
+  );
 
   useEffect(() => {
     if (!workspaceId) return;
@@ -138,6 +147,7 @@ export default function AddCostModal() {
           onChange={setValues}
           brandOptions={brandOptions}
           errors={errors}
+          refreshKey={sourcesRefreshKey}
         />
 
         {submitError && (

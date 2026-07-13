@@ -6,11 +6,30 @@ type PlatformMetricsRow =
 
 export type MetricsSnapshot = PlatformMetricsRow;
 
-export async function syncMetrics(workspaceId: string): Promise<void> {
-  const { error } = await supabase.functions.invoke("sync-platform-analytics", {
+export interface SyncMetricsResult {
+  postId: string;
+  platform: string;
+  success: boolean;
+  error?: string;
+}
+
+export interface SyncMetricsResponse {
+  ok: boolean;
+  synced: number;
+  results: SyncMetricsResult[];
+}
+
+export async function syncMetrics(
+  workspaceId: string,
+): Promise<SyncMetricsResponse> {
+  const { data, error } = await supabase.functions.invoke<SyncMetricsResponse>("sync-platform-analytics", {
     body: { workspace_id: workspaceId },
   });
   if (error) throw error;
+  if (!data) {
+    throw new Error("No sync response returned.");
+  }
+  return data;
 }
 
 export async function getMetrics(postId: string): Promise<MetricsSnapshot[]> {

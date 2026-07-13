@@ -72,29 +72,40 @@ function periodDateRange(period: MetricPeriod): { from: string; to: string } {
 // Fetch all metric snapshots for a workspace's published posts in a period
 async function fetchWorkspaceMetrics(
   workspaceId: string,
-  from: string,
-  to: string,
+  _from: string,
+  _to: string,
 ) {
+  // Fetch ALL published posts for this workspace — not filtered by published_at,
+  // because impressions are captured by the sync at any time and we want to show
+  // metrics regardless of how long ago the post was published.
   const { data: posts, error: postsError } = await supabase
     .from("posts")
     .select("id, platform, title, hook, brand_id")
     .eq("workspace_id", workspaceId)
-    .eq("status", "published")
-    .gte("published_at", `${from}T00:00:00`)
-    .lte("published_at", `${to}T23:59:59`);
+    .eq("status", "published");
 
   if (postsError) throw postsError;
   if (!posts || posts.length === 0) return { posts: [], metrics: [] };
 
   const postIds = posts.map((p) => p.id);
+  // Fetch the latest metric snapshot per post (most recent captured_at wins).
   const { data: metrics, error: metricsError } = await supabase
     .from("platform_metrics")
     .select("*")
     .in("post_id", postIds)
-    .gte("captured_at", `${from}T00:00:00`);
+    .order("captured_at", { ascending: false });
 
   if (metricsError) throw metricsError;
-  return { posts: posts ?? [], metrics: metrics ?? [] };
+
+  // Deduplicate: keep only the latest row per post_id.
+  const latestByPost = new Map<string, typeof metrics[number]>();
+  for (const m of metrics ?? []) {
+    if (!latestByPost.has(m.post_id)) {
+      latestByPost.set(m.post_id, m);
+    }
+  }
+
+  return { posts: posts ?? [], metrics: Array.from(latestByPost.values()) };
 }
 
 export async function getPerformanceSummary(

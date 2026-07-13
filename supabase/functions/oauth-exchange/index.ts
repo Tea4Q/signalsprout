@@ -9,7 +9,7 @@ interface TokenResult {
   expiresAt: string | null;
   accountName: string;
   accountHandle: string | null;
-  externalAccountId: string | null;
+  externalAccountId: string;
   avatarUrl: string | null;
   scopes: string | null;
 }
@@ -17,7 +17,7 @@ interface TokenResult {
 async function exchangeInstagram(
   code: string,
   redirectUri: string,
-): Promise<TokenResult> {
+): Promise<TokenResult[]> {
   const clientId = Deno.env.get("INSTAGRAM_CLIENT_ID")!;
   const clientSecret = Deno.env.get("INSTAGRAM_CLIENT_SECRET")!;
 
@@ -63,12 +63,8 @@ async function exchangeInstagram(
     );
   }
 
-  // Step 4: Find a Page with a linked Instagram Business or Creator Account
-  let igAccountId: string | null = null;
-  let igUsername: string | null = null;
-  let igName: string | null = null;
-  let igAvatar: string | null = null;
-  let pageAccessToken = longToken;
+  // Step 4: Resolve every granted Page with a linked Instagram Business account.
+  const results: TokenResult[] = [];
 
   for (const page of pages) {
     const igRes = await fetch(
@@ -77,47 +73,49 @@ async function exchangeInstagram(
     );
     const igData = await igRes.json();
     if (igData.instagram_business_account?.id) {
-      igAccountId = igData.instagram_business_account.id;
-      pageAccessToken = page.access_token;
+      const igAccountId = igData.instagram_business_account.id as string;
 
       // Step 5: Fetch Instagram profile
       const profileRes = await fetch(
         `https://graph.facebook.com/v20.0/${igAccountId}` +
           `?fields=id,username,name,profile_picture_url` +
-          `&access_token=${encodeURIComponent(pageAccessToken)}`,
+          `&access_token=${encodeURIComponent(page.access_token)}`,
       );
       const profile = await profileRes.json();
-      igUsername = profile.username ?? null;
-      igName = profile.name ?? null;
-      igAvatar = profile.profile_picture_url ?? null;
-      break;
+      const igUsername = profile.username ?? null;
+      const igName = profile.name ?? null;
+      const igAvatar = profile.profile_picture_url ?? null;
+
+      results.push({
+        accessToken: page.access_token, // Page Access Tokens don't expire
+        refreshToken: null,
+        expiresAt: null,
+        accountName: igName ?? igUsername ?? `instagram_${igAccountId}`,
+        accountHandle: igUsername,
+        externalAccountId: igAccountId,
+        avatarUrl: igAvatar,
+        scopes: "instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement",
+      });
     }
   }
 
-  if (!igAccountId) {
+  if (results.length === 0) {
     throw new Error(
       "No Instagram Business or Creator account linked to your Facebook Pages. " +
         "Please link your Instagram to a Facebook Page in Instagram Settings first.",
     );
   }
 
-  return {
-    accessToken: pageAccessToken, // Page Access Tokens don't expire
-    refreshToken: null,
-    expiresAt: null,
-    accountName: igName ?? igUsername ?? `instagram_${igAccountId}`,
-    accountHandle: igUsername,
-    externalAccountId: igAccountId,
-    avatarUrl: igAvatar,
-    scopes: "instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement",
-  };
+  return Array.from(
+    new Map(results.map((result) => [result.externalAccountId, result])).values(),
+  );
 }
 
 async function exchangeFacebook(params: {
   code?: string;
   redirectUri?: string;
   accessToken?: string;
-}): Promise<TokenResult> {
+}): Promise<TokenResult[]> {
   // Facebook and Instagram share the same Meta app — fall back to Instagram credentials.
   const clientId =
     Deno.env.get("FACEBOOK_CLIENT_ID") ?? Deno.env.get("INSTAGRAM_CLIENT_ID");
@@ -185,10 +183,7 @@ async function exchangeFacebook(params: {
     );
   }
 
-  // Use the first page (the Meta Business Login dialog lets the user pick which page to share)
-  const page = pages[0];
-
-  return {
+  return pages.map((page) => ({
     // Store the Page access token — it never expires for pages the user admins,
     // so publish-facebook can use it directly without re-calling /me/accounts.
     accessToken: page.access_token,
@@ -199,7 +194,7 @@ async function exchangeFacebook(params: {
     externalAccountId: page.id,
     avatarUrl: null,
     scopes: "pages_manage_posts,pages_read_engagement,pages_show_list",
-  };
+  }));
 }
 
 async function exchangePinterest(
@@ -229,6 +224,23 @@ async function exchangePinterest(
   });
   const profile = await profileRes.json();
 
+  // Fetch the user's boards so we can store a default board ID.
+  // publish-now reads account_identifier as the board_id for pin creation.
+  const boardsRes = await fetch(
+    "https://api.pinterest.com/v5/boards?page_size=1",
+    { headers: { Authorization: `Bearer ${tokens.access_token}` } },
+  );
+  const boardsData = boardsRes.ok ? await boardsRes.json() : { items: [] };
+  const firstBoard: { id?: string; name?: string } | undefined =
+    boardsData.items?.[0];
+
+  if (!firstBoard?.id) {
+    throw new Error(
+      "No Pinterest boards found on this account. " +
+      "Please create at least one board on Pinterest, then reconnect.",
+    );
+  }
+
   const expiresAt = tokens.expires_in
     ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
     : null;
@@ -238,8 +250,9 @@ async function exchangePinterest(
     refreshToken: tokens.refresh_token ?? null,
     expiresAt,
     accountName: profile.username ?? "Pinterest Account",
-    accountHandle: profile.username ?? null,
-    externalAccountId: profile.id ?? null,
+    // account_identifier is read by publish-now as the board_id
+    accountHandle: firstBoard.id,
+    externalAccountId: String(profile.id ?? firstBoard.id),
     avatarUrl: profile.profile_image ?? null,
     scopes: tokens.scope ?? null,
   };
@@ -388,7 +401,9 @@ async function exchangeGeneric(
     expiresAt,
     accountName: profileData[cfg.nameField] ?? `${platform} account`,
     accountHandle: profileData[cfg.handleField] ?? null,
-    externalAccountId: profileData[cfg.idField] ? String(profileData[cfg.idField]) : null,
+    externalAccountId: profileData[cfg.idField]
+      ? String(profileData[cfg.idField])
+      : String(profileData[cfg.handleField] ?? profileData[cfg.nameField] ?? `${platform}-account`),
     avatarUrl: cfg.avatarField ? profileData[cfg.avatarField] ?? null : null,
     scopes: tokens.scope ?? cfg.scopeValue,
   };
@@ -485,47 +500,46 @@ Deno.serve(async (req: Request) => {
     }
 
     // Exchange the authorization code (or direct token) for stored credentials
-    let result: TokenResult;
+    let results: TokenResult[];
     if (platform === "instagram") {
-      result = await exchangeInstagram(code!, redirectUri!);
+      results = await exchangeInstagram(code!, redirectUri!);
     } else if (platform === "facebook") {
-      result = await exchangeFacebook({ code, redirectUri, accessToken });
+      results = await exchangeFacebook({ code, redirectUri, accessToken });
     } else if (platform === "pinterest") {
-      result = await exchangePinterest(code!, redirectUri!);
+      results = [await exchangePinterest(code!, redirectUri!)];
     } else {
-      result = await exchangeGeneric(platform, code!, redirectUri!, codeVerifier);
+      results = [await exchangeGeneric(platform, code!, redirectUri!, codeVerifier)];
     }
 
-    // Upsert into social_accounts
-    const { data: account, error: upsertError } = await serviceClient
+    // Upsert the resolved provider accounts into social_accounts.
+    const rows = results.map((result) => ({
+      workspace_id: workspaceId,
+      platform: platform as never,
+      account_name: result.accountName,
+      account_identifier: result.accountHandle,
+      external_account_id: result.externalAccountId,
+      avatar_url: result.avatarUrl,
+      access_token: result.accessToken,
+      refresh_token: result.refreshToken,
+      token_expires_at: result.expiresAt,
+      scopes: result.scopes,
+      status: "active",
+    }));
+
+    const { data: accounts, error: upsertError } = await serviceClient
       .from("social_accounts")
-      .upsert(
-        {
-          workspace_id: workspaceId,
-          platform: platform as never,
-          account_name: result.accountName,
-          account_identifier: result.accountHandle,
-          external_account_id: result.externalAccountId,
-          avatar_url: result.avatarUrl,
-          access_token: result.accessToken,
-          refresh_token: result.refreshToken,
-          token_expires_at: result.expiresAt,
-          scopes: result.scopes,
-          status: "active",
-        },
-        {
-          onConflict: "workspace_id,platform",
-          ignoreDuplicates: false,
-        },
-      )
+      .upsert(rows, {
+        onConflict: "workspace_id,platform,external_account_id",
+        ignoreDuplicates: false,
+      })
       .select("id, account_name, account_identifier, avatar_url, token_expires_at, status")
-      .single();
+      .order("account_name", { ascending: true });
 
     if (upsertError) {
       throw new Error(`DB upsert failed: ${upsertError.message} (code: ${upsertError.code})`);
     }
 
-    return new Response(JSON.stringify({ success: true, account }), {
+    return new Response(JSON.stringify({ success: true, accounts, account_count: accounts?.length ?? 0 }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

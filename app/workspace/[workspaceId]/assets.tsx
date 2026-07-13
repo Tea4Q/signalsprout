@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Pressable,
   RefreshControl,
@@ -16,7 +15,8 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { radius, spacing, typography } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { AppBadge, BadgeVariant } from "@/components/ui/AppBadge";
-import { AssetDetailSheet } from "@/components/assets/AssetDetailSheet";
+import { AppButton } from "@/components/ui/AppButton";
+import { AppModal } from "@/components/ui/AppModal";
 import {
   getAssetsWithUsage,
   deleteAsset,
@@ -51,11 +51,8 @@ export default function AssetsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<FilterKey>("all");
 
-  const [selectedAsset, setSelectedAsset] = useState<AssetWithUsage | null>(null);
-  const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
-  const [sheetVisible, setSheetVisible] = useState(false);
+  const [confirmAsset, setConfirmAsset] = useState<AssetWithUsage | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const s = styles(colors);
 
@@ -90,37 +87,23 @@ export default function AssetsScreen() {
   const filtered =
     filter === "all" ? assets : assets.filter((a) => a.type === filter);
 
-  const openSheet = (asset: AssetWithUsage) => {
-    setSelectedAsset(asset);
-    setSelectedUrl(getAssetPublicUrl(asset.file_path));
-    setSheetVisible(true);
-  };
-
-  const closeSheet = () => {
-    setSheetVisible(false);
-    setSelectedAsset(null);
-    setSelectedUrl(null);
-  };
-
   const handleDelete = useCallback(
-    async (assetId: string) => {
+    async () => {
+      if (!confirmAsset) return;
+      const asset = confirmAsset;
+      setConfirmAsset(null);
       setDeleting(true);
-      setDeleteError(null);
       try {
-        await deleteAsset(assetId);
-        // Optimistic: remove immediately so the list updates even if reload fails
-        setAssets((prev) => prev.filter((a) => a.id !== assetId));
-        closeSheet();
-        load(true); // refresh in background; no await so errors don't bubble here
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "Failed to delete asset.";
-        setDeleteError(msg);
-        Alert.alert("Delete Failed", msg);
+        await deleteAsset(asset.id);
+        setAssets((prev) => prev.filter((a) => a.id !== asset.id));
+      } catch {
+        // Re-fetch so the list is back in sync
+        load(true);
       } finally {
         setDeleting(false);
       }
     },
-    [load],
+    [confirmAsset, load],
   );
 
   const renderItem = ({ item, index }: { item: AssetWithUsage; index: number }) => {
@@ -130,14 +113,11 @@ export default function AssetsScreen() {
     const isLeft = index % NUM_COLUMNS === 0;
 
     return (
-      <Pressable
-        onPress={() => openSheet(item)}
-        style={({ pressed }) => [
+      <View
+        style={[
           s.cell,
-          { marginLeft: isLeft ? 0 : spacing.sm, opacity: pressed ? 0.85 : 1 },
+          { marginLeft: isLeft ? 0 : spacing.sm },
         ]}
-        accessibilityRole="button"
-        accessibilityLabel={`View asset`}
       >
         <Image
           source={{ uri: url }}
@@ -158,7 +138,17 @@ export default function AssetsScreen() {
             </Text>
           </View>
         )}
-      </Pressable>
+        {/* Trash button overlay */}
+        <Pressable
+          onPress={() => setConfirmAsset(item)}
+          style={({ pressed }) => [s.trashBtn, { opacity: pressed ? 0.7 : 1 }]}
+          accessibilityRole="button"
+          accessibilityLabel="Delete asset"
+          hitSlop={8}
+        >
+          <MaterialIcons name="delete" size={16} color="#fff" />
+        </Pressable>
+      </View>
     );
   };
 
@@ -259,23 +249,28 @@ export default function AssetsScreen() {
         />
       )}
 
-      {deleteError && (
-        <View style={[s.errorBanner, { backgroundColor: colors.danger + "22", borderColor: colors.danger + "55" }]}>
-          <MaterialIcons name="error-outline" size={14} color={colors.danger} />
-          <Text style={{ ...typography.caption, color: colors.danger, flex: 1 }}>{deleteError}</Text>
-          <Pressable onPress={() => setDeleteError(null)} accessibilityLabel="Dismiss error">
-            <MaterialIcons name="close" size={14} color={colors.danger} />
-          </Pressable>
-        </View>
-      )}
-      <AssetDetailSheet
-        asset={selectedAsset}
-        publicUrl={selectedUrl}
-        visible={sheetVisible}
-        onClose={closeSheet}
-        onDelete={handleDelete}
-        deleting={deleting}
-      />
+      <AppModal
+        visible={!!confirmAsset}
+        onClose={() => setConfirmAsset(null)}
+        title="Delete asset"
+      >
+        <Text style={{ ...typography.body, color: colors.textSecondary, marginBottom: spacing.lg }}>
+          {confirmAsset?.postCount
+            ? `This asset is used in ${confirmAsset.postCount} post${confirmAsset.postCount !== 1 ? "s" : ""}. It will be unlinked and permanently deleted.`
+            : "This will permanently delete the asset."}
+        </Text>
+        <AppButton
+          label="Delete"
+          variant="destructive"
+          onPress={handleDelete}
+          loading={deleting}
+        />
+        <AppButton
+          label="Cancel"
+          variant="secondary"
+          onPress={() => setConfirmAsset(null)}
+        />
+      </AppModal>
     </SafeAreaView>
   );
 }
@@ -338,21 +333,22 @@ function styles(colors: Record<string, string>) {
       paddingVertical: 2,
       borderRadius: 999,
     },
+    trashBtn: {
+      position: "absolute",
+      top: spacing.sm,
+      right: spacing.sm,
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: "rgba(0,0,0,0.55)",
+      alignItems: "center",
+      justifyContent: "center",
+    },
     empty: {
       flex: 1,
       alignItems: "center",
       justifyContent: "center",
       padding: spacing["3xl"],
-    },
-    errorBanner: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: spacing.sm,
-      marginHorizontal: spacing.xl,
-      marginTop: spacing.md,
-      padding: spacing.md,
-      borderRadius: radius.md,
-      borderWidth: 1,
     },
   });
 }

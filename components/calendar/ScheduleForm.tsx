@@ -19,6 +19,8 @@ interface ScheduleFormProps {
   socialAccountId: string | null;
   onChangeDate: (date: Date) => void;
   onChangeSocialAccount: (id: string) => void;
+  /** When true, the account selector is hidden (rendered by the parent instead) */
+  hideAccountSelector?: boolean;
 }
 
 // Formats a Date to "YYYY-MM-DD" for <input type="date">
@@ -41,6 +43,7 @@ export function ScheduleForm({
   socialAccountId,
   onChangeDate,
   onChangeSocialAccount,
+  hideAccountSelector = false,
 }: ScheduleFormProps) {
   const { colors } = useTheme();
   const [accounts, setAccounts] = useState<SelectOption[]>([]);
@@ -53,12 +56,18 @@ export function ScheduleForm({
       .select("id, account_name, platform")
       .eq("workspace_id", workspaceId)
       .eq("platform", platform)
+      .eq("status", "active")
       .then(({ data }) => {
-        setAccounts(
-          (data ?? []).map((a) => ({ label: a.account_name, value: a.id })),
-        );
+        const options = (data ?? []).map((a) => ({
+          label: a.account_name,
+          value: a.id,
+        }));
+        setAccounts(options);
+        if (options.length === 1 && !socialAccountId) {
+          onChangeSocialAccount(options[0].value);
+        }
       });
-  }, [workspaceId, platform]);
+  }, [workspaceId, platform, socialAccountId, onChangeSocialAccount]);
 
   const formattedDate = scheduledFor.toLocaleDateString(undefined, {
     weekday: "short",
@@ -218,14 +227,16 @@ export function ScheduleForm({
         )}
       </View>
 
-      {/* Social account selector */}
-      <AppSelect
-        label={`${platform.charAt(0).toUpperCase() + platform.slice(1)} Account`}
-        value={socialAccountId}
-        options={accounts}
-        onChange={onChangeSocialAccount}
-        placeholder="Select account"
-      />
+      {/* Social account selector — hidden when parent renders it at a higher level */}
+      {!hideAccountSelector && (
+        <AppSelect
+          label={`${platform.charAt(0).toUpperCase() + platform.slice(1)} Account`}
+          value={socialAccountId}
+          options={accounts}
+          onChange={onChangeSocialAccount}
+          placeholder="Select account"
+        />
+      )}
     </View>
   );
 }

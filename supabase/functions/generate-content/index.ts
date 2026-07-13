@@ -39,7 +39,7 @@ Deno.serve(async (req: Request) => {
 
     // Fetch brand + brand profile
     const [{ data: brand }, { data: profile }] = await Promise.all([
-      supabase.from("brands").select("name, voice_summary, target_audience").eq("id", brand_id).single(),
+      supabase.from("brands").select("name, voice_summary, target_audience, website_url").eq("id", brand_id).single(),
       supabase.from("brand_profiles").select("tone_keywords, hashtag_library, cta_library, posting_notes").eq("brand_id", brand_id).maybeSingle(),
     ]);
 
@@ -79,7 +79,7 @@ Rules:
 - The hook must be punchy, specific, and platform-appropriate.
 - Instagram captions can be up to 2200 characters. Pinterest descriptions up to 500.
 - Include 5–15 hashtags from the brand's hashtag library plus relevant trending ones.
-- Always end the caption body with a CTA from the brand's CTA library (or the requested CTA).
+- Always end the caption body with a CTA from the brand's CTA library (or the requested CTA). Where the brand has a website URL, incorporate it naturally into the CTA (e.g. "Visit us at …", "Shop now → link in bio", etc.).
 - The image_prompt must describe exactly what should appear visually — camera angle, lighting, subject, background, style (e.g. "flat lay", "lifestyle photo", "bold graphic"), color palette, any text overlays in quotes.
 - Stay true to the brand voice and tone keywords at all times.`;
 
@@ -87,6 +87,7 @@ Rules:
       `Brand: ${brand.name}`,
       brand.voice_summary ? `Voice summary: ${brand.voice_summary}` : null,
       brand.target_audience ? `Target audience: ${brand.target_audience}` : null,
+      brand.website_url ? `Brand website / link-in-bio URL: ${brand.website_url}` : null,
       profile?.tone_keywords?.length ? `Tone keywords: ${profile.tone_keywords.join(", ")}` : null,
       profile?.cta_library?.length ? `CTA library: ${profile.cta_library.join(" | ")}` : null,
       profile?.hashtag_library?.length ? `Hashtag library: ${profile.hashtag_library.join(" ")}` : null,

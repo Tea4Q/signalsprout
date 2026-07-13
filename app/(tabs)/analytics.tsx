@@ -1,4 +1,5 @@
 import { MetricCard } from "@/components/analytics/MetricCard";
+import { AccountInsightsSection } from "@/components/analytics/AccountInsightsSection";
 import {
   PerformanceTable,
   type SortKey,
@@ -9,13 +10,20 @@ import { radius, spacing, typography } from "@/constants/theme";
 import { useWorkspace } from "@/context/workspace-context";
 import { useTheme } from "@/hooks/use-theme";
 import { formatUSD } from "@/lib/currency";
-import { syncMetrics } from "@/services/analytics/analyticsIngestService";
+import {
+  syncMetrics,
+  type SyncMetricsResponse,
+} from "@/services/analytics/analyticsIngestService";
 import {
   dismissRecommendation,
   generateRecommendations,
   getRecommendations,
   type Recommendation,
 } from "@/services/analytics/recommendationService";
+import {
+  getAccountInsights,
+  type AccountInsightCard,
+} from "@/services/analytics/accountInsightsService";
 import {
   getPerformanceByBrand,
   getPerformanceByPlatform,
@@ -61,6 +69,7 @@ export default function AnalyticsScreen() {
   const [topPosts, setTopPosts] = useState<PostPerformanceRow[]>([]);
   const [byBrand, setByBrand] = useState<BrandPerformanceRow[]>([]);
   const [byPlatform, setByPlatform] = useState<PlatformPerformanceRow[]>([]);
+  const [accountInsights, setAccountInsights] = useState<AccountInsightCard[]>([]);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("impressions");
   const [loading, setLoading] = useState(false);
@@ -68,13 +77,15 @@ export default function AnalyticsScreen() {
   const [generatingRecs, setGeneratingRecs] = useState(false);
   const [costPerPost, setCostPerPost] = useState<CostPerPostResult | null>(null);
   const [costPerAsset, setCostPerAsset] = useState<CostPerAssetResult | null>(null);
+  const [lastSync, setLastSync] = useState<SyncMetricsResponse | null>(null);
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
 
   const loadData = useCallback(
     async (p: MetricPeriod) => {
       if (!workspaceId) return;
       setLoading(true);
       try {
-        const [sum, posts, brands, platforms, recs, cpp, cpa] = await Promise.all([
+        const [sum, posts, brands, platforms, recs, cpp, cpa, insightRows] = await Promise.all([
           getPerformanceSummary(workspaceId, p),
           getTopPosts(workspaceId, p, sortKey),
           getPerformanceByBrand(workspaceId, p),
@@ -82,11 +93,13 @@ export default function AnalyticsScreen() {
           getRecommendations(workspaceId, p),
           getCostPerPost(workspaceId, p),
           getCostPerAsset(workspaceId, p),
+          getAccountInsights(workspaceId, p),
         ]);
         setSummary(sum);
         setTopPosts(posts);
         setByBrand(brands);
         setByPlatform(platforms);
+        setAccountInsights(insightRows);
         setRecommendations(recs);
         setCostPerPost(cpp);
         setCostPerAsset(cpa);
@@ -121,10 +134,15 @@ export default function AnalyticsScreen() {
     if (!workspaceId) return;
     setSyncing(true);
     try {
-      await syncMetrics(workspaceId);
+      const result = await syncMetrics(workspaceId);
+      setLastSync(result);
+      setLastSyncAt(new Date().toLocaleString());
       await loadData(period);
-    } catch {
-      Alert.alert("Sync failed", "Could not sync platform metrics.");
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Could not sync platform metrics.";
+      setLastSync({ ok: false, synced: 0, results: [] });
+      setLastSyncAt(new Date().toLocaleString());
+      Alert.alert("Sync failed", message);
     } finally {
       setSyncing(false);
     }
@@ -160,6 +178,40 @@ export default function AnalyticsScreen() {
       </SafeAreaView>
     );
   }
+
+  const syncByPlatform = (() => {
+    if (!lastSync?.results?.length) return [] as {
+      platform: string;
+      successCount: number;
+      failureCount: number;
+      errors: string[];
+    }[];
+
+    const grouped = new Map<string, {
+      successCount: number;
+      failureCount: number;
+      errors: string[];
+    }>();
+
+    for (const row of lastSync.results) {
+      const key = row.platform || "unknown";
+      const cur = grouped.get(key) ?? { successCount: 0, failureCount: 0, errors: [] };
+      if (row.success) {
+        cur.successCount += 1;
+      } else {
+        cur.failureCount += 1;
+        if (row.error && !cur.errors.includes(row.error)) {
+          cur.errors.push(row.error);
+        }
+      }
+      grouped.set(key, cur);
+    }
+
+    return Array.from(grouped.entries()).map(([platform, value]) => ({
+      platform,
+      ...value,
+    }));
+  })();
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
@@ -216,6 +268,69 @@ export default function AnalyticsScreen() {
           onChange={(key) => setPeriod(key as MetricPeriod)}
         />
 
+        {/* Last sync status */}
+        {lastSyncAt && (
+          <View
+            style={{
+              backgroundColor: colors.surface,
+              borderRadius: radius.md,
+              borderWidth: 1,
+              borderColor: colors.border,
+              padding: spacing.lg,
+              gap: spacing.sm,
+            }}
+          >
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={{ ...typography.h3, color: colors.textPrimary }}>
+                Last Sync Status
+              </Text>
+              <Text style={{ ...typography.micro, color: colors.textMuted }}>
+                {lastSyncAt}
+              </Text>
+            </View>
+
+            <Text style={{ ...typography.caption, color: colors.textSecondary }}>
+              {lastSync?.synced ?? 0} posts checked
+            </Text>
+
+            {syncByPlatform.length === 0 ? (
+              <Text style={{ ...typography.caption, color: colors.textMuted }}>
+                No per-platform results were returned.
+              </Text>
+            ) : (
+              <View style={{ gap: spacing.sm }}>
+                {syncByPlatform.map((row) => (
+                  <View
+                    key={row.platform}
+                    style={{
+                      backgroundColor: colors.surfaceAlt,
+                      borderRadius: radius.sm,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      padding: spacing.md,
+                      gap: spacing.xs,
+                    }}
+                  >
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                      <Text style={{ ...typography.caption, color: colors.textPrimary, fontWeight: "600", textTransform: "capitalize" }}>
+                        {row.platform}
+                      </Text>
+                      <Text style={{ ...typography.micro, color: colors.textSecondary }}>
+                        {row.successCount} success · {row.failureCount} failed
+                      </Text>
+                    </View>
+                    {row.errors.length > 0 && (
+                      <Text style={{ ...typography.micro, color: colors.danger }}>
+                        {row.errors[0]}
+                      </Text>
+                    )}
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
+
         {/* Summary metric cards */}
         {loading ? (
           <ActivityIndicator color={colors.primary} />
@@ -263,6 +378,12 @@ export default function AnalyticsScreen() {
             />
           </View>
         )}
+
+        {/* Top Posts */}
+        <AccountInsightsSection
+          insights={accountInsights}
+          loading={loading}
+        />
 
         {/* Top Posts */}
         <View style={{ gap: spacing.md }}>

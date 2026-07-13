@@ -13,6 +13,8 @@ interface GenerateImageRequest {
   platform: Platform;
   brand_id: string;
   workspace_id: string;
+  character_reference_url?: string | null;
+  product_shot_url?: string | null;
 }
 
 function imageSize(platform: Platform): "1024x1024" | "1024x1536" {
@@ -32,7 +34,7 @@ Deno.serve(async (req: Request) => {
     );
 
     const body: GenerateImageRequest = await req.json();
-    const { prompt, platform, brand_id, workspace_id } = body;
+    const { prompt, platform, brand_id, workspace_id, character_reference_url, product_shot_url } = body;
 
     if (!prompt || !platform || !brand_id || !workspace_id) {
       return new Response(JSON.stringify({ error: "Missing required fields" }), {
@@ -47,31 +49,77 @@ Deno.serve(async (req: Request) => {
     const size = imageSize(platform);
     const startTime = Date.now();
 
-    const genResponse = await fetch("https://api.openai.com/v1/images/generations", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${openAiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-image-1",
-        prompt,
-        n: 1,
-        size,
-        quality: "medium",
-        output_format: "jpeg",
-        output_compression: 85,
-      }),
-    });
+    let b64: string;
+    let revisedPrompt: string;
 
-    if (!genResponse.ok) {
-      const err = await genResponse.text();
-      throw new Error(`Image generation error: ${err}`);
+    const hasReference = !!(character_reference_url || product_shot_url);
+
+    if (hasReference) {
+      // ── Reference mode: use images/edits so the model respects the provided
+      // images (character, product shot, or both) when composing the scene.
+      const formData = new FormData();
+      formData.append("model", "gpt-image-1");
+      formData.append("prompt", prompt);
+      formData.append("n", "1");
+      formData.append("size", size);
+      formData.append("quality", "medium");
+      formData.append("output_format", "jpeg");
+      formData.append("output_compression", "85");
+
+      if (character_reference_url) {
+        const refRes = await fetch(character_reference_url);
+        if (!refRes.ok) throw new Error("Failed to fetch character reference image");
+        formData.append("image[]", await refRes.blob(), "character_reference.jpg");
+      }
+
+      if (product_shot_url) {
+        const prodRes = await fetch(product_shot_url);
+        if (!prodRes.ok) throw new Error("Failed to fetch product shot image");
+        formData.append("image[]", await prodRes.blob(), "product_shot.jpg");
+      }
+
+      const genResponse = await fetch("https://api.openai.com/v1/images/edits", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${openAiKey}` },
+        body: formData,
+      });
+
+      if (!genResponse.ok) {
+        const err = await genResponse.text();
+        throw new Error(`Image edit error: ${err}`);
+      }
+
+      const genData = await genResponse.json();
+      b64 = genData.data[0].b64_json;
+      revisedPrompt = genData.data[0].revised_prompt ?? prompt;
+    } else {
+      // ── Standard text-to-image generation ──
+      const genResponse = await fetch("https://api.openai.com/v1/images/generations", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${openAiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-image-1",
+          prompt,
+          n: 1,
+          size,
+          quality: "medium",
+          output_format: "jpeg",
+          output_compression: 85,
+        }),
+      });
+
+      if (!genResponse.ok) {
+        const err = await genResponse.text();
+        throw new Error(`Image generation error: ${err}`);
+      }
+
+      const genData = await genResponse.json();
+      b64 = genData.data[0].b64_json;
+      revisedPrompt = genData.data[0].revised_prompt ?? prompt;
     }
-
-    const genData = await genResponse.json();
-    const b64: string = genData.data[0].b64_json;
-    const revisedPrompt: string = genData.data[0].revised_prompt ?? prompt;
 
     const imageBytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
     const fileName = `${Date.now()}-${platform}.jpg`;

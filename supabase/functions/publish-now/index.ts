@@ -5,8 +5,7 @@
  * Returns { success: true, external_post_id: string }
  *       | { error: string }
  */
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "jsr:@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -94,10 +93,10 @@ Deno.serve(async (req: Request) => {
 
     // Resolve primary image
     const postAssets = (
-      post.post_assets as Array<{
+      post.post_assets as {
         sort_order: number;
         assets: { file_path: string } | null;
-      }> | null
+      }[] | null
     ) ?? [];
     postAssets.sort((a, b) => a.sort_order - b.sort_order);
     const primaryAsset = postAssets[0]?.assets ?? null;
@@ -245,6 +244,135 @@ Deno.serve(async (req: Request) => {
       }
 
       externalPostId = pinData.id;
+
+    // ── Facebook ──────────────────────────────────────────────────────────────
+    } else if (post.platform === "facebook") {
+      if (!account.access_token) {
+        return new Response(
+          JSON.stringify({ error: "Facebook access token not found. Please reconnect your Facebook account." }),
+          { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      let pageId = account.external_account_id;
+      let pageAccessToken = account.access_token;
+
+      // Self-heal: if a User Access Token was stored by an old OAuth flow,
+      // /me/accounts succeeds and returns the Page tokens.  Page Access Tokens
+      // cannot call /me/accounts, so a failure means we already have a page token.
+      const accountsRes = await fetch(
+        `https://graph.facebook.com/v21.0/me/accounts?access_token=${encodeURIComponent(pageAccessToken)}`,
+      );
+      if (!accountsRes.ok) {
+        // Token is already a Page Access Token — this is expected for accounts
+        // connected with the current OAuth flow. Continue with the stored token.
+      } else {
+        const accountsData = await accountsRes.json();
+        const fbError = accountsData.error;
+        if (fbError?.code === 200 || (fbError?.message ?? "").includes("pages_manage_posts")) {
+          return new Response(
+            JSON.stringify({
+              error:
+                "Facebook requires the pages_manage_posts permission to publish posts. " +
+                "Please go to Social Accounts, disconnect Facebook, then reconnect and approve all permissions. " +
+                "If the error persists your Meta App needs pages_manage_posts added in the Meta Developer Portal " +
+                "(App Dashboard → Facebook Login for Business → your config → Permissions) and must be in Development mode or App Review approved.",
+            }),
+            { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+        const pages: { id: string; name: string; access_token: string }[] =
+          accountsData.data ?? [];
+        if (pages.length > 0) {
+          const matched = pages.find((p) => p.id === pageId) ?? pages[0];
+          pageId = matched.id;
+          pageAccessToken = matched.access_token;
+          // Persist the corrected page credentials so future publishes don't need to re-heal
+          await svc
+            .from("social_accounts")
+            .update({
+              access_token: pageAccessToken,
+              external_account_id: pageId,
+              account_name: matched.name,
+            })
+            .eq("id", post.social_account_id);
+        }
+      }
+      if (!pageId) {
+        return new Response(
+          JSON.stringify({ error: "Facebook page ID not configured on social account" }),
+          { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      if (primaryAsset) {
+        // Photo post
+        const { data: urlData } = await svc.storage
+          .from("assets")
+          .createSignedUrl(primaryAsset.file_path, 3600);
+
+        if (!urlData?.signedUrl) {
+          return new Response(
+            JSON.stringify({ error: "Could not generate signed URL for asset" }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+
+        const photoParams = new URLSearchParams({
+          url: urlData.signedUrl,
+          caption: captionText,
+          published: "true",
+          access_token: pageAccessToken,
+        });
+        if (post.destination_url) photoParams.set("link", post.destination_url);
+
+        const photoRes = await fetch(
+          `https://graph.facebook.com/v21.0/${pageId}/photos`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: photoParams.toString(),
+          },
+        );
+        const photoData = await photoRes.json();
+        if (!photoRes.ok || !photoData.post_id) {
+          if (photoData.error?.code === 200) {
+            throw new Error(
+              "Facebook permissions error: the stored Page access token is missing pages_manage_posts. " +
+              "Please go to Social Accounts, disconnect Facebook, then reconnect and approve all permissions.",
+            );
+          }
+          throw new Error(photoData.error?.message ?? "Failed to publish Facebook photo post");
+        }
+        externalPostId = photoData.post_id;
+      } else {
+        // Text-only feed post
+        const feedParams = new URLSearchParams({
+          message: captionText,
+          access_token: pageAccessToken,
+        });
+        if (post.destination_url) feedParams.set("link", post.destination_url);
+
+        const feedRes = await fetch(
+          `https://graph.facebook.com/v21.0/${pageId}/feed`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: feedParams.toString(),
+          },
+        );
+        const feedData = await feedRes.json();
+        if (!feedRes.ok || !feedData.id) {
+          if (feedData.error?.code === 200) {
+            throw new Error(
+              "Facebook permissions error: the stored Page access token is missing pages_manage_posts. " +
+              "Please go to Social Accounts, disconnect Facebook, then reconnect and approve all permissions.",
+            );
+          }
+          throw new Error(feedData.error?.message ?? "Failed to publish Facebook post");
+        }
+        externalPostId = feedData.id;
+      }
 
     } else {
       return new Response(

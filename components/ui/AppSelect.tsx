@@ -25,6 +25,8 @@ interface AppSelectProps {
   placeholder?: string;
   error?: string;
   disabled?: boolean;
+  onAddNew?: () => void;
+  addNewLabel?: string;
 }
 
 export function AppSelect({
@@ -35,6 +37,8 @@ export function AppSelect({
   placeholder = "Select an option",
   error,
   disabled = false,
+  onAddNew,
+  addNewLabel = "Add new",
 }: AppSelectProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -103,6 +107,7 @@ export function AppSelect({
         visible={open}
         transparent
         animationType="fade"
+        presentationStyle="pageSheet"
         onRequestClose={() => setOpen(false)}
       >
         <TouchableWithoutFeedback onPress={() => setOpen(false)}>
@@ -110,7 +115,7 @@ export function AppSelect({
             style={{
               flex: 1,
               backgroundColor: "rgba(0,0,0,0.5)",
-              justifyContent: "flex-end",
+              justifyContent: "flex-start",
             }}
           >
             <TouchableWithoutFeedback>
@@ -121,6 +126,7 @@ export function AppSelect({
                   borderTopRightRadius: radius.xl,
                   paddingTop: spacing.lg,
                   paddingBottom: insets.bottom + spacing.lg,
+                  minHeight: 200,
                   maxHeight: "60%",
                 }}
               >
@@ -141,6 +147,13 @@ export function AppSelect({
                   data={options}
                   keyExtractor={(item) => item.value}
                   style={{ flexShrink: 1 }}
+                  ListEmptyComponent={
+                    <View style={{ paddingHorizontal: spacing.xl, paddingVertical: spacing.xl }}>
+                      <Text style={{ ...typography.body, color: colors.textMuted, textAlign: "center" }}>
+                        No options available
+                      </Text>
+                    </View>
+                  }
                   renderItem={({ item }) => {
                     const isSelected = item.value === value;
                     return (
@@ -185,6 +198,29 @@ export function AppSelect({
                     );
                   }}
                 />
+
+                {onAddNew && (
+                  <Pressable
+                    onPress={() => {
+                      setOpen(false);
+                      onAddNew();
+                    }}
+                    style={({ pressed }) => ({
+                      paddingHorizontal: spacing.xl,
+                      paddingVertical: spacing.lg,
+                      borderTopWidth: 1,
+                      borderTopColor: colors.borderSoft,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: spacing.sm,
+                      backgroundColor: pressed ? colors.surfaceAlt : "transparent",
+                    })}
+                  >
+                    <Text style={{ ...typography.body, color: colors.primary, fontWeight: "600" }}>
+                      + {addNewLabel}
+                    </Text>
+                  </Pressable>
+                )}
               </View>
             </TouchableWithoutFeedback>
           </View>

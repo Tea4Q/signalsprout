@@ -40,28 +40,11 @@ export async function getAssetsWithUsage(
 }
 
 export async function deleteAsset(assetId: string): Promise<void> {
-  // Fetch file_path before deleting (needed for storage cleanup).
-  const { data: asset, error: fetchError } = await supabase
-    .from("assets")
-    .select("file_path")
-    .eq("id", assetId)
-    .single();
-
-  if (fetchError || !asset) {
-    throw new Error("Asset not found or access denied.");
-  }
-
-  // Delete the DB record. post_assets rows cascade automatically via FK.
-  const { error: dbError } = await supabase
-    .from("assets")
-    .delete()
-    .eq("id", assetId);
-
-  if (dbError) throw dbError;
-
-  // Best-effort storage cleanup — don't fail the operation if the file
-  // is already gone or the RLS policy can't match the path.
-  await supabase.storage.from("assets").remove([asset.file_path]);
+  const { data, error } = await supabase.functions.invoke("delete-asset", {
+    body: { asset_id: assetId },
+  });
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
 }
 
 export function getAssetPublicUrl(filePath: string): string {
@@ -311,6 +294,23 @@ export async function getCharacterReference(brandId: string): Promise<AssetRow |
     .select("*")
     .eq("brand_id", brandId)
     .eq("alt_text", "character_reference")
+    .maybeSingle();
+  return data ?? null;
+}
+
+/**
+ * Returns the most recently uploaded Product Shot asset for a brand, or null.
+ * Used to inject the product as a visual reference into image generation.
+ */
+export async function getProductShot(brandId: string): Promise<AssetRow | null> {
+  const { data } = await supabase
+    .from("assets")
+    .select("*")
+    .eq("brand_id", brandId)
+    .eq("alt_text", "Product Shot")
+    .eq("type", "uploaded_image")
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
   return data ?? null;
 }

@@ -67,10 +67,10 @@ function formatAccountIdentifier(account: SocialAccount): string | null {
       : `@${account.account_identifier}`;
   }
   if (account.platform === "facebook") {
-    const name = account.account_name ? `${account.account_name} ` : "";
-    return `${name}Page ID ${account.account_identifier}`;
+    // Show as "Page ID <identifier>" for Facebook pages
+    return null;
   }
-  return account.account_identifier;
+  return `Page ID ${account.account_identifier}`;
 }
 
 // ─── Screen ──────────────────────────────────────────────────────────────────

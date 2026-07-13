@@ -27,6 +27,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { ZodNull } from "zod";
 
 // Ensure browser session is completed on return (iOS)
 WebBrowser.maybeCompleteAuthSession();
@@ -66,7 +67,8 @@ function formatAccountIdentifier(account: SocialAccount): string | null {
       : `@${account.account_identifier}`;
   }
   if (account.platform === "facebook") {
-    return `Page ID ${account.account_identifier}`;
+    const name = account.account_name ? `${account.account_name} ` : "";
+    return `${name}Page ID ${account.account_identifier}`;
   }
   return account.account_identifier;
 }

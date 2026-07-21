@@ -83,12 +83,41 @@ Deno.serve(async (_req: Request) => {
       if (!account) throw new Error("Social account not found");
       if (!account.access_token) throw new Error("Facebook access token missing on social account");
 
-      const pageId = account.external_account_id as string | null;
+      let pageId = account.external_account_id as string | null;
       if (!pageId) throw new Error("Facebook Page ID not configured on social account");
+      let pageAccessToken = account.access_token as string;
 
-      // The OAuth exchange stores the Page access token directly — it never expires
-      // for pages the user admins, so no /me/accounts re-fetch is needed.
-      const pageAccessToken = account.access_token as string;
+      // Self-heal old connections that stored a User Access Token by resolving
+      // the correct page token from /me/accounts and persisting it.
+      const accountsRes = await fetch(
+        `https://graph.facebook.com/${GRAPH_VERSION}/me/accounts?access_token=${encodeURIComponent(pageAccessToken)}`,
+      );
+      if (accountsRes.ok) {
+        const accountsData = await accountsRes.json();
+        const pages: { id: string; name: string; access_token: string }[] = accountsData.data ?? [];
+        if (pages.length > 0) {
+          const matched = pages.find((p) => p.id === pageId);
+          if (!matched) {
+            throw new Error(
+              `Facebook Page ${pageId} not found in the connected user's pages. ` +
+              "Ensure the account has admin access to the page and the page ID is correct.",
+            );
+          }
+
+          pageId = matched.id;
+          pageAccessToken = matched.access_token;
+
+          await serviceClient
+            .from("social_accounts")
+            .update({
+              access_token: pageAccessToken,
+              external_account_id: pageId,
+              account_identifier: pageId,
+              account_name: matched.name,
+            })
+            .eq("id", socialAccountId);
+        }
+      }
 
       // ── Build caption text ────────────────────────────────────────────────
 
@@ -100,10 +129,10 @@ Deno.serve(async (_req: Request) => {
       // ── Get primary image (if any) ────────────────────────────────────────
 
       const postAssets =
-        (post.post_assets as Array<{
+        (post.post_assets as {
           sort_order: number;
           assets: { file_path: string } | null;
-        }> | null) ?? [];
+        }[] | null) ?? [];
       postAssets.sort((a, b) => a.sort_order - b.sort_order);
       const primaryAsset = postAssets[0]?.assets;
 
@@ -137,6 +166,12 @@ Deno.serve(async (_req: Request) => {
         const photoData = await photoRes.json();
 
         if (!photoRes.ok || !photoData.post_id) {
+          if (photoData.error?.code === 200) {
+            throw new Error(
+              "Facebook permissions error: the stored Page access token is missing pages_manage_posts. " +
+              "Please disconnect and reconnect Facebook, then approve all permissions.",
+            );
+          }
           throw new Error(
             photoData.error?.message ?? "Failed to publish photo to Facebook Page",
           );
@@ -164,6 +199,12 @@ Deno.serve(async (_req: Request) => {
         const feedData = await feedRes.json();
 
         if (!feedRes.ok || !feedData.id) {
+          if (feedData.error?.code === 200) {
+            throw new Error(
+              "Facebook permissions error: the stored Page access token is missing pages_manage_posts. " +
+              "Please disconnect and reconnect Facebook, then approve all permissions.",
+            );
+          }
           throw new Error(
             feedData.error?.message ?? "Failed to publish post to Facebook Page feed",
           );

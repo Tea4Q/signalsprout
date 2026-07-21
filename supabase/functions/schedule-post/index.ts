@@ -143,21 +143,20 @@ Deno.serve(async (req: Request) => {
 
     if (updateError) throw updateError;
 
-    // Delete any existing queued publish_jobs for this post, then insert fresh
-    await serviceClient
-      .from("publish_jobs")
-      .delete()
-      .eq("post_id", post_id)
-      .eq("status", "queued");
-
+    // Upsert by post_id so rescheduling failed posts refreshes the existing job
+    // instead of leaving stale run_at values behind.
     const { data: job, error: jobError } = await serviceClient
       .from("publish_jobs")
-      .insert({
-        post_id,
-        run_at: scheduled_for,
-        status: "queued",
-        attempt_count: 0,
-      })
+      .upsert(
+        {
+          post_id,
+          run_at: scheduled_for,
+          status: "queued",
+          attempt_count: 0,
+          last_error: null,
+        },
+        { onConflict: "post_id" },
+      )
       .select()
       .single();
 

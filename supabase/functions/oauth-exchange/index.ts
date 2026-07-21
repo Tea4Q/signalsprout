@@ -14,6 +14,12 @@ interface TokenResult {
   scopes: string | null;
 }
 
+function toNonEmptyString(value: unknown): string | null {
+  if (value == null) return null;
+  const normalized = String(value).trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
 async function exchangeInstagram(
   code: string,
   redirectUri: string,
@@ -222,6 +228,9 @@ async function exchangePinterest(
   const profileRes = await fetch("https://api.pinterest.com/v5/user_account", {
     headers: { Authorization: `Bearer ${tokens.access_token}` },
   });
+  if (!profileRes.ok) {
+    throw new Error(`Pinterest profile fetch failed: ${await profileRes.text()}`);
+  }
   const profile = await profileRes.json();
 
   // Fetch the user's boards so we can store a default board ID.
@@ -234,12 +243,18 @@ async function exchangePinterest(
   const firstBoard: { id?: string; name?: string } | undefined =
     boardsData.items?.[0];
 
-  if (!firstBoard?.id) {
+  const boardId = toNonEmptyString(firstBoard?.id);
+  if (!boardId) {
     throw new Error(
       "No Pinterest boards found on this account. " +
       "Please create at least one board on Pinterest, then reconnect.",
     );
   }
+
+  const profileData = profile.data ?? profile;
+  const profileId = toNonEmptyString(profileData?.id);
+  const username = toNonEmptyString(profileData?.username);
+  const profileImage = toNonEmptyString(profileData?.profile_image);
 
   const expiresAt = tokens.expires_in
     ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
@@ -249,11 +264,11 @@ async function exchangePinterest(
     accessToken: tokens.access_token,
     refreshToken: tokens.refresh_token ?? null,
     expiresAt,
-    accountName: profile.username ?? "Pinterest Account",
+    accountName: username ?? "Pinterest Account",
     // account_identifier is read by publish-now as the board_id
-    accountHandle: firstBoard.id,
-    externalAccountId: String(profile.id ?? firstBoard.id),
-    avatarUrl: profile.profile_image ?? null,
+    accountHandle: boardId,
+    externalAccountId: profileId ?? boardId,
+    avatarUrl: profileImage,
     scopes: tokens.scope ?? null,
   };
 }
@@ -512,19 +527,30 @@ Deno.serve(async (req: Request) => {
     }
 
     // Upsert the resolved provider accounts into social_accounts.
-    const rows = results.map((result) => ({
-      workspace_id: workspaceId,
-      platform: platform as never,
-      account_name: result.accountName,
-      account_identifier: result.accountHandle,
-      external_account_id: result.externalAccountId,
-      avatar_url: result.avatarUrl,
-      access_token: result.accessToken,
-      refresh_token: result.refreshToken,
-      token_expires_at: result.expiresAt,
-      scopes: result.scopes,
-      status: "active",
-    }));
+    const rows = results.map((result, index) => {
+      const externalAccountId =
+        toNonEmptyString(result.externalAccountId) ??
+        toNonEmptyString(result.accountHandle) ??
+        toNonEmptyString(result.accountName);
+
+      if (!externalAccountId) {
+        throw new Error(`Missing external account id for ${platform} result #${index + 1}`);
+      }
+
+      return {
+        workspace_id: workspaceId,
+        platform: platform as never,
+        account_name: toNonEmptyString(result.accountName) ?? `${platform} account`,
+        account_identifier: toNonEmptyString(result.accountHandle),
+        external_account_id: externalAccountId,
+        avatar_url: toNonEmptyString(result.avatarUrl),
+        access_token: result.accessToken,
+        refresh_token: result.refreshToken,
+        token_expires_at: result.expiresAt,
+        scopes: result.scopes,
+        status: "active",
+      };
+    });
 
     const { data: accounts, error: upsertError } = await serviceClient
       .from("social_accounts")

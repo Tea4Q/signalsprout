@@ -113,7 +113,7 @@ export default function EditPostModal() {
         setCaption(p.caption ?? "");
         setHashtags((p.hashtags as string[] | null) ?? []);
         setDestinationUrl(p.destination_url ?? "");
-        const scheduled = p.status === "scheduled";
+        const scheduled = p.status === "scheduled" || (p.status === "failed" && !!p.scheduled_for);
         setIsScheduled(scheduled);
         if (p.scheduled_for) setScheduledFor(new Date(p.scheduled_for));
         if (p.social_account_id) setSocialAccountId(p.social_account_id);
@@ -153,7 +153,7 @@ export default function EditPostModal() {
         setLoadingPost(false);
       }
     })();
-  }, [postId]);
+  }, [postId, workspaceId]);
 
   const handleAddHashtag = useCallback(() => {
     const tag = newHashtag.trim().replace(/^#+/, "");

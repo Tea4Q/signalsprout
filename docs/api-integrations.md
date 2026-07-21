@@ -71,7 +71,6 @@ Metrics are ingested daily by the `ingest-metrics` Edge Function and stored in `
 1. Create a Pinterest App at https://developers.pinterest.com
 2. Required scopes:
    - `boards:read`
-   - `boards:write`
    - `pins:read`
    - `pins:write`
    - `user_accounts:read`

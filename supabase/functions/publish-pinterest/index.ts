@@ -61,7 +61,7 @@ Deno.serve(async (_req: Request) => {
 
       const { data: account } = await serviceClient
         .from("social_accounts")
-        .select("external_account_id, account_identifier")
+        .select("external_account_id, account_identifier, access_token")
         .eq("id", socialAccountId)
         .single();
 
@@ -71,19 +71,12 @@ Deno.serve(async (_req: Request) => {
       const boardId = account.account_identifier;
       if (!boardId)
         throw new Error("Pinterest board ID not configured on social account");
-
-      // Retrieve access token from credential_vault
-      const { data: vault } = await serviceClient
-        .from("credential_vault")
-        .select("encrypted_value")
-        .eq("workspace_id", post.workspace_id as string)
-        .eq("service", "pinterest")
-        .eq("name", "access_token")
-        .maybeSingle();
-
-      if (!vault) throw new Error("Pinterest access token not found in vault");
-
-      const accessToken = vault.encrypted_value;
+      const accessToken = account.access_token;
+      if (!accessToken) {
+        throw new Error(
+          "Pinterest access token missing on social account. Please reconnect Pinterest.",
+        );
+      }
 
       // Get primary image URL
       const postAssets =

@@ -18,6 +18,7 @@ export type QueueItem = {
     platform: string;
     status: string;
     brand_id: string;
+    scheduled_for?: string | null;
   } | null;
 };
 

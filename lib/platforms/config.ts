@@ -74,7 +74,7 @@ export const PLATFORMS: Record<PlatformId, PlatformConfig> = {
       `https://www.facebook.com/dialog/oauth?${buildQuery({
         client_id: clientId,
         redirect_uri: redirectUri,
-        scope: "instagram_business_basic,instagram_content_publish,pages_show_list,pages_read_engagement",
+        scope: "instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement",
         response_type: "code",
         state,
       })}`,
@@ -90,7 +90,7 @@ export const PLATFORMS: Record<PlatformId, PlatformConfig> = {
       `https://www.pinterest.com/oauth/?${buildQuery({
         client_id: clientId,
         redirect_uri: redirectUri,
-        scope: "boards:read,pins:read,pins:write",
+        scope: "boards:read,pins:read,pins:write,user_accounts:read",
         response_type: "code",
         state,
       })}`,

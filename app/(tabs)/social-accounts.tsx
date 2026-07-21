@@ -68,9 +68,8 @@ function formatAccountIdentifier(account: SocialAccount): string | null {
   }
   if (account.platform === "facebook") {
     // Show as "Page ID <identifier>" for Facebook pages
-    return null;
+    return `Page ID ${account.account_identifier}`;
   }
-  return `Page ID ${account.account_identifier}`;
 }
 
 // ─── Screen ──────────────────────────────────────────────────────────────────

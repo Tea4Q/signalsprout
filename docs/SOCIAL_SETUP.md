@@ -59,7 +59,14 @@ In **Facebook Login → Settings → Valid OAuth Redirect URIs**, add:
 https://signalsprout.vercel.app/oauth/callback
 ```
 
-For local development also add:
+For local web development also add:
+
+```
+http://localhost:8081/oauth/callback
+```
+
+If you are testing a native Expo build, also add:
+
 ```
 exp://localhost:8081/--/oauth/callback
 ```

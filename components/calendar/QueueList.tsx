@@ -69,8 +69,9 @@ export function QueueList({
     const badge = STATUS_BADGE[status] ?? STATUS_BADGE["draft"];
     const isFailed = status === "failed";
     const platform = post?.platform ?? "instagram";
-    const scheduledTime = item.run_at
-      ? new Date(item.run_at).toLocaleString(undefined, {
+    const scheduleSource = post?.scheduled_for ?? item.run_at;
+    const scheduledTime = scheduleSource
+      ? new Date(scheduleSource).toLocaleString(undefined, {
           month: "short",
           day: "numeric",
           hour: "2-digit",

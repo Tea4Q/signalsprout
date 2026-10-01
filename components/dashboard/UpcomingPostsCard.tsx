@@ -4,7 +4,7 @@ import { formatScheduledTime } from "@/lib/date";
 import type { QueueItem } from "@/services/scheduling/publishQueueService";
 import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { SkeletonBox } from "../ui/SkeletonBox";
 
 interface UpcomingPostsCardProps {

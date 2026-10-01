@@ -106,14 +106,14 @@ export const PLATFORMS: Record<PlatformId, PlatformConfig> = {
       const configId = process.env.EXPO_PUBLIC_FACEBOOK_CONFIG_ID;
       if (configId) {
         // Facebook Login for Business — config_id pre-defines scopes in the Meta Developer
-        // Portal. We also pass scope explicitly so pages_manage_posts is always requested
-        // even if it was added to the app after the config was created.
+        // Portal. We also pass scopes explicitly so analytics and publishing permissions
+        // are requested even if they were added after the config was created.
         return `https://www.facebook.com/dialog/oauth?${buildQuery({
           config_id: configId,
           client_id: clientId,
           redirect_uri: redirectUri,
           state,
-          scope: "pages_manage_posts,pages_read_engagement,pages_show_list",
+          scope: "pages_manage_posts,pages_read_engagement,pages_show_list,read_insights",
           response_type: "code",
           override_default_response_type: "true",
         })}`;
@@ -122,7 +122,7 @@ export const PLATFORMS: Record<PlatformId, PlatformConfig> = {
       return `https://www.facebook.com/dialog/oauth?${buildQuery({
         client_id: clientId,
         redirect_uri: redirectUri,
-        scope: "pages_manage_posts,pages_read_engagement,pages_show_list",
+        scope: "pages_manage_posts,pages_read_engagement,pages_show_list,read_insights",
         response_type: "code",
         state,
       })}`;

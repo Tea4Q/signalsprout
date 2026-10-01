@@ -30,7 +30,7 @@ function SingleToast({ toast }: { toast: ToastItem }) {
       );
     }, 3000);
     return () => clearTimeout(timer);
-  }, []);
+  }, [dismissToast, opacity, toast.id, translateY]);
 
   const animStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,

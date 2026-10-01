@@ -124,7 +124,6 @@ export function ScheduleForm({
         </Text>
 
         {Platform.OS === "web" ? (
-          // @ts-expect-error — web-only HTML input
           <input
             type="date"
             title="Select date"
@@ -180,7 +179,6 @@ export function ScheduleForm({
         </Text>
 
         {Platform.OS === "web" ? (
-          // @ts-expect-error — web-only HTML input
           <input
             type="time"
             title="Select time"

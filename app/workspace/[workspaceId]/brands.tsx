@@ -14,7 +14,6 @@ import {
   FlatList,
   Modal,
   Pressable,
-  ScrollView,
   Text,
   TouchableWithoutFeedback,
   View,

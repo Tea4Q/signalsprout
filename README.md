@@ -118,6 +118,22 @@ npx vercel --prod --yes
 
 Set the same `EXPO_PUBLIC_*` vars and the Inngest vars in the Vercel dashboard (or via `npx vercel env add`). They must exist before a production build — the bundle is static.
 
+## Scheduled Publishing Smoke Test
+
+Run this against a dedicated test user, connected social account, and disposable post. The test schedules and publishes the post, so it requires explicit confirmation:
+
+```powershell
+$env:SMOKE_SUPABASE_URL="https://<project-ref>.supabase.co"
+$env:SMOKE_SUPABASE_ANON_KEY="<anon-key>"
+$env:SMOKE_EMAIL="smoke-user@example.com"
+$env:SMOKE_PASSWORD="<password>"
+$env:SMOKE_POST_ID="<dedicated-post-id>"
+$env:SMOKE_CONFIRM="publish"
+npm run smoke:scheduled-publishing
+```
+
+The runner calls `schedule-post`, waits for the Inngest delay, and verifies that the targeted `publish_jobs` row reaches `done` and the post reaches `published`. Use `SMOKE_DELAY_SECONDS` and `SMOKE_TIMEOUT_SECONDS` to adjust timing.
+
 ---
 
 ## Project Structure

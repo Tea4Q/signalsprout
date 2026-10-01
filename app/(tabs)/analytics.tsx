@@ -11,10 +11,6 @@ import { useWorkspace } from "@/context/workspace-context";
 import { useTheme } from "@/hooks/use-theme";
 import { formatUSD } from "@/lib/currency";
 import {
-  syncMetrics,
-  type SyncMetricsResponse,
-} from "@/services/analytics/analyticsIngestService";
-import {
   dismissRecommendation,
   generateRecommendations,
   getRecommendations,
@@ -45,7 +41,6 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Pressable,
   ScrollView,
   Text,
   View,
@@ -73,12 +68,9 @@ export default function AnalyticsScreen() {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("impressions");
   const [loading, setLoading] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [generatingRecs, setGeneratingRecs] = useState(false);
   const [costPerPost, setCostPerPost] = useState<CostPerPostResult | null>(null);
   const [costPerAsset, setCostPerAsset] = useState<CostPerAssetResult | null>(null);
-  const [lastSync, setLastSync] = useState<SyncMetricsResponse | null>(null);
-  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
 
   const loadData = useCallback(
     async (p: MetricPeriod) => {
@@ -130,24 +122,6 @@ export default function AnalyticsScreen() {
     [workspaceId, period],
   );
 
-  const handleSync = useCallback(async () => {
-    if (!workspaceId) return;
-    setSyncing(true);
-    try {
-      const result = await syncMetrics(workspaceId);
-      setLastSync(result);
-      setLastSyncAt(new Date().toLocaleString());
-      await loadData(period);
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "Could not sync platform metrics.";
-      setLastSync({ ok: false, synced: 0, results: [] });
-      setLastSyncAt(new Date().toLocaleString());
-      Alert.alert("Sync failed", message);
-    } finally {
-      setSyncing(false);
-    }
-  }, [workspaceId, period, loadData]);
-
   const handleGenerate = useCallback(async () => {
     if (!workspaceId) return;
     setGeneratingRecs(true);
@@ -179,40 +153,6 @@ export default function AnalyticsScreen() {
     );
   }
 
-  const syncByPlatform = (() => {
-    if (!lastSync?.results?.length) return [] as {
-      platform: string;
-      successCount: number;
-      failureCount: number;
-      errors: string[];
-    }[];
-
-    const grouped = new Map<string, {
-      successCount: number;
-      failureCount: number;
-      errors: string[];
-    }>();
-
-    for (const row of lastSync.results) {
-      const key = row.platform || "unknown";
-      const cur = grouped.get(key) ?? { successCount: 0, failureCount: 0, errors: [] };
-      if (row.success) {
-        cur.successCount += 1;
-      } else {
-        cur.failureCount += 1;
-        if (row.error && !cur.errors.includes(row.error)) {
-          cur.errors.push(row.error);
-        }
-      }
-      grouped.set(key, cur);
-    }
-
-    return Array.from(grouped.entries()).map(([platform, value]) => ({
-      platform,
-      ...value,
-    }));
-  })();
-
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       <ScrollView
@@ -230,35 +170,9 @@ export default function AnalyticsScreen() {
           <Text style={{ ...typography.h2, color: colors.textPrimary }}>
             Analytics
           </Text>
-          <Pressable
-            onPress={handleSync}
-            disabled={syncing}
-            style={({ pressed }) => ({
-              backgroundColor: pressed ? colors.surfaceAlt : colors.primarySoft,
-              borderRadius: radius.md,
-              paddingHorizontal: spacing.md,
-              paddingVertical: spacing.sm,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: spacing.xs,
-              opacity: syncing ? 0.6 : 1,
-            })}
-            accessibilityRole="button"
-            accessibilityLabel="Sync platform metrics"
-          >
-            {syncing && (
-              <ActivityIndicator size="small" color={colors.primary} />
-            )}
-            <Text
-              style={{
-                ...typography.caption,
-                color: colors.primary,
-                fontWeight: "600",
-              }}
-            >
-              {syncing ? "Syncing…" : "Sync Metrics"}
-            </Text>
-          </Pressable>
+          <Text style={{ ...typography.caption, color: colors.textMuted }}>
+            Daily sync at 00:00 UTC
+          </Text>
         </View>
 
         {/* Period tabs */}
@@ -267,69 +181,6 @@ export default function AnalyticsScreen() {
           activeKey={period}
           onChange={(key) => setPeriod(key as MetricPeriod)}
         />
-
-        {/* Last sync status */}
-        {lastSyncAt && (
-          <View
-            style={{
-              backgroundColor: colors.surface,
-              borderRadius: radius.md,
-              borderWidth: 1,
-              borderColor: colors.border,
-              padding: spacing.lg,
-              gap: spacing.sm,
-            }}
-          >
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-              <Text style={{ ...typography.h3, color: colors.textPrimary }}>
-                Last Sync Status
-              </Text>
-              <Text style={{ ...typography.micro, color: colors.textMuted }}>
-                {lastSyncAt}
-              </Text>
-            </View>
-
-            <Text style={{ ...typography.caption, color: colors.textSecondary }}>
-              {lastSync?.synced ?? 0} posts checked
-            </Text>
-
-            {syncByPlatform.length === 0 ? (
-              <Text style={{ ...typography.caption, color: colors.textMuted }}>
-                No per-platform results were returned.
-              </Text>
-            ) : (
-              <View style={{ gap: spacing.sm }}>
-                {syncByPlatform.map((row) => (
-                  <View
-                    key={row.platform}
-                    style={{
-                      backgroundColor: colors.surfaceAlt,
-                      borderRadius: radius.sm,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      padding: spacing.md,
-                      gap: spacing.xs,
-                    }}
-                  >
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                      <Text style={{ ...typography.caption, color: colors.textPrimary, fontWeight: "600", textTransform: "capitalize" }}>
-                        {row.platform}
-                      </Text>
-                      <Text style={{ ...typography.micro, color: colors.textSecondary }}>
-                        {row.successCount} success · {row.failureCount} failed
-                      </Text>
-                    </View>
-                    {row.errors.length > 0 && (
-                      <Text style={{ ...typography.micro, color: colors.danger }}>
-                        {row.errors[0]}
-                      </Text>
-                    )}
-                  </View>
-                ))}
-              </View>
-            )}
-          </View>
-        )}
 
         {/* Summary metric cards */}
         {loading ? (

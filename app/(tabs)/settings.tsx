@@ -31,7 +31,6 @@ import {
   ActionSheetIOS,
   ActivityIndicator,
   Alert,
-  Clipboard,
   Platform,
   Pressable,
   ScrollView,

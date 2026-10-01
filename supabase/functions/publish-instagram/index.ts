@@ -22,14 +22,18 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-Deno.serve(async (_req: Request) => {
+Deno.serve(async (req: Request) => {
+  const requestBody = await req.json().catch(() => ({})) as { post_id?: unknown };
+  const requestedPostId = typeof requestBody.post_id === "string"
+    ? requestBody.post_id
+    : null;
   const serviceClient = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
   // Fetch queued Instagram jobs that are due
-  const { data: jobs, error: jobsError } = await serviceClient
+  let jobsQuery = serviceClient
     .from("publish_jobs")
     .select(
       `
@@ -54,11 +58,21 @@ Deno.serve(async (_req: Request) => {
     .lte("run_at", new Date().toISOString())
     .eq("posts.platform", "instagram");
 
+  if (requestedPostId) jobsQuery = jobsQuery.eq("post_id", requestedPostId);
+
+  const { data: jobs, error: jobsError } = await jobsQuery;
+
   if (jobsError) {
     console.error("Failed to fetch jobs:", jobsError.message);
     return new Response(JSON.stringify({ error: jobsError.message }), {
       status: 500,
     });
+  }
+
+  if (requestedPostId && (jobs ?? []).length === 0) {
+    return new Response(JSON.stringify({
+      error: "No due queued Instagram publish job found for this post",
+    }), { status: 409, headers: { "Content-Type": "application/json" } });
   }
 
   const results: { job_id: string; success: boolean; error?: string }[] = [];
@@ -94,10 +108,10 @@ Deno.serve(async (_req: Request) => {
 
       // Get primary asset (first by sort_order)
       const postAssets =
-        (post.post_assets as Array<{
+        (post.post_assets as {
           sort_order: number;
           assets: { file_path: string; mime_type: string | null } | null;
-        }> | null) ?? [];
+        }[] | null) ?? [];
       postAssets.sort((a, b) => a.sort_order - b.sort_order);
       const primaryAsset = postAssets[0]?.assets;
 

@@ -2,7 +2,6 @@ import { supabase } from "@/lib/supabase";
 import type { Database } from "@/types/database";
 
 type PostRow = Database["public"]["Tables"]["posts"]["Row"];
-type PublishJobRow = Database["public"]["Tables"]["publish_jobs"]["Row"];
 
 export type QueueItem = {
   id: string;
@@ -45,7 +44,7 @@ export async function getQueue(
   if (error) throw error;
   // Supabase returns the joined table as the key "posts" (table name).
   // Map it to "post" to match the QueueItem shape.
-  return ((data ?? []) as unknown as Array<Record<string, unknown>>).map((row) => ({
+  return ((data ?? []) as unknown as Record<string, unknown>[]).map((row) => ({
     ...row,
     post: row["posts"] ?? null,
   })) as unknown as QueueItem[];

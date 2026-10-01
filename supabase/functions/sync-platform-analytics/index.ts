@@ -110,10 +110,11 @@ Deno.serve(async (req) => {
       const engagement =
         impressions > 0 ? (likes + comments + saves + shares) / impressions : 0;
 
-      // Upsert — one row per post+date snapshot
+      // Keep each sync as a snapshot; the table has no unique post_id constraint.
       const capturedAt = new Date().toISOString();
-      await supabase.from("platform_metrics").upsert(
-        {
+      const { error: metricsError } = await supabase
+        .from("platform_metrics")
+        .insert({
           post_id: post.id,
           platform: post.platform,
           captured_at: capturedAt,
@@ -125,9 +126,11 @@ Deno.serve(async (req) => {
           outbound_clicks,
           reach: metrics.reach ?? null,
           engagement_rate: engagement,
-        },
-        { onConflict: "post_id" },
-      );
+        });
+
+      if (metricsError) {
+        throw new Error(`Failed to store platform metrics: ${metricsError.message}`);
+      }
 
       await supabase.from("audit_logs").insert({
         workspace_id: post.workspace_id,
@@ -153,7 +156,7 @@ Deno.serve(async (req) => {
     }
   }
 
-  // Fetch account-level insights for connected social accounts (Instagram only for now).
+  // Fetch account-level insights for each supported connected social account.
   let accountQuery = supabase
     .from("social_accounts")
     .select("id, workspace_id, platform, access_token, external_account_id")
@@ -174,14 +177,22 @@ Deno.serve(async (req) => {
 
   for (const account of socialAccounts ?? []) {
     try {
-      if (account.platform !== "instagram") {
+      let insight: AccountInsightData;
+      if (account.platform === "instagram") {
+        insight = await fetchInstagramAccountInsights(
+          account.external_account_id!,
+          account.access_token!,
+        );
+      } else if (account.platform === "facebook") {
+        insight = await fetchFacebookAccountInsights(
+          account.external_account_id!,
+          account.access_token!,
+        );
+      } else if (account.platform === "pinterest") {
+        insight = await fetchPinterestAccountInsights(account.access_token!);
+      } else {
         continue;
       }
-
-      const insight = await fetchInstagramAccountInsights(
-        account.external_account_id!,
-        account.access_token!,
-      );
 
       const capturedAt = new Date().toISOString();
       const capturedDate = capturedAt.slice(0, 10);
@@ -405,7 +416,7 @@ async function fetchPinterestMetrics(
 
 // ─── Instagram Account Insights ─────────────────────────────────────────────
 
-type InstagramTopContentItem = {
+type AccountTopContentItem = {
   external_media_id: string;
   media_type: string | null;
   title: string | null;
@@ -416,7 +427,7 @@ type InstagramTopContentItem = {
   metadata: Record<string, unknown>;
 };
 
-type InstagramAccountInsight = {
+type AccountInsightData = {
   views: number;
   accounts_reached: number;
   followers_views: number | null;
@@ -424,7 +435,7 @@ type InstagramAccountInsight = {
   posts_views: number | null;
   stories_views: number | null;
   metadata: Record<string, unknown>;
-  top_content: InstagramTopContentItem[];
+  top_content: AccountTopContentItem[];
 };
 
 function asNumber(value: unknown): number {
@@ -472,10 +483,205 @@ function pickBreakdownValue(item: any, target: string): number | null {
   return null;
 }
 
+function previousUtcDate(): string {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() - 1);
+  return date.toISOString().slice(0, 10);
+}
+
+function readMetric(items: any[], name: string): number {
+  const item = items.find((entry) => entry.name === name);
+  return item ? pickMetricValue(item) : 0;
+}
+
+async function fetchFacebookAccountInsights(
+  pageId: string,
+  accessToken: string,
+): Promise<AccountInsightData> {
+  const metricNames = [
+    "page_impressions",
+    "page_posts_impressions_unique",
+    "page_post_engagements",
+    "page_follows",
+    "page_views_total",
+  ];
+  const metricDate = previousUtcDate();
+  const params = new URLSearchParams({
+    metric: metricNames.join(","),
+    period: "day",
+    since: metricDate,
+    until: metricDate,
+    access_token: accessToken,
+  });
+  const url = `https://graph.facebook.com/v26.0/${pageId}/insights?${params}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Facebook Page insights error: ${res.status} ${await res.text()}`);
+  }
+
+  const json = await res.json();
+  const data = Array.isArray(json?.data) ? json.data : [];
+  const views = readMetric(data, "page_impressions");
+  const accountsReached = readMetric(data, "page_posts_impressions_unique");
+  const engagements = readMetric(data, "page_post_engagements");
+  const follows = readMetric(data, "page_follows");
+  const pageViews = readMetric(data, "page_views_total");
+
+  return {
+    views,
+    accounts_reached: accountsReached,
+    followers_views: null,
+    non_followers_views: null,
+    posts_views: null,
+    stories_views: null,
+    metadata: {
+      fetched_at: new Date().toISOString(),
+      metric_date: metricDate,
+      source: "facebook_page_insights",
+      metrics: {
+        page_impressions: views,
+        page_posts_impressions_unique: accountsReached,
+        page_post_engagements: engagements,
+        page_follows: follows,
+        page_views_total: pageViews,
+      },
+      display_metrics: {
+        "Post engagements": engagements,
+        Follows: follows,
+        "Page visits": pageViews,
+      },
+    },
+    top_content: [],
+  };
+}
+
+async function fetchPinterestAccountInsights(
+  accessToken: string,
+): Promise<AccountInsightData> {
+  const metricDate = previousUtcDate();
+  const metricTypes = [
+    "IMPRESSION",
+    "ENGAGEMENT",
+    "PIN_CLICK",
+    "OUTBOUND_CLICK",
+    "SAVE",
+    "PROFILE_VISIT",
+  ];
+  const params = new URLSearchParams({
+    start_date: metricDate,
+    end_date: metricDate,
+    metric_types: metricTypes.join(","),
+  });
+  const headers = { Authorization: `Bearer ${accessToken}` };
+  const res = await fetch(
+    `https://api.pinterest.com/v5/user_account/analytics?${params}`,
+    { headers },
+  );
+  if (!res.ok) {
+    throw new Error(`Pinterest account analytics error: ${res.status} ${await res.text()}`);
+  }
+
+  const json = await res.json();
+  const metrics = json?.all?.summary_metrics ?? json?.summary_metrics ?? {};
+  const views = asNumber(metrics.IMPRESSION);
+  const accountsReached = asNumber(metrics.REACH);
+  const displayMetrics: Record<string, number> = {
+    Engagements: asNumber(metrics.ENGAGEMENT),
+    "Pin clicks": asNumber(metrics.PIN_CLICK),
+    Saves: asNumber(metrics.SAVE),
+    "Outbound clicks": asNumber(metrics.OUTBOUND_CLICK),
+    "Profile visits": asNumber(metrics.PROFILE_VISIT),
+  };
+
+  const topContent = await fetchPinterestTopPins(
+    accessToken,
+    metricDate,
+    headers,
+  );
+
+  return {
+    views,
+    accounts_reached: accountsReached,
+    followers_views: null,
+    non_followers_views: null,
+    posts_views: null,
+    stories_views: null,
+    metadata: {
+      fetched_at: new Date().toISOString(),
+      metric_date: metricDate,
+      source: "pinterest_account_analytics",
+      reach_available: metrics.REACH != null,
+      metrics,
+      display_metrics: displayMetrics,
+    },
+    top_content: topContent,
+  };
+}
+
+async function fetchPinterestTopPins(
+  accessToken: string,
+  metricDate: string,
+  headers: Record<string, string>,
+): Promise<AccountTopContentItem[]> {
+  const params = new URLSearchParams({
+    start_date: metricDate,
+    end_date: metricDate,
+    sort_by: "IMPRESSION",
+    metric_types: "IMPRESSION,ENGAGEMENT,PIN_CLICK,OUTBOUND_CLICK,SAVE",
+    num_of_pins: "8",
+  });
+  const res = await fetch(
+    `https://api.pinterest.com/v5/user_account/analytics/top_pins?${params}`,
+    { headers },
+  );
+  if (!res.ok) return [];
+
+  const json = await res.json();
+  const pins = Array.isArray(json?.pins) ? json.pins : [];
+  return await Promise.all(
+    pins.map(async (item: any, index: number) => {
+      const id = String(item?.pin_id ?? "");
+      const views = asNumber(item?.metrics?.IMPRESSION);
+      let detail: any = {};
+
+      if (id) {
+        try {
+          const detailRes = await fetch(
+            `https://api.pinterest.com/v5/pins/${encodeURIComponent(id)}`,
+            { headers },
+          );
+          if (detailRes.ok) detail = await detailRes.json();
+        } catch {
+          // Keep the analytics row even if pin presentation details are unavailable.
+        }
+      }
+
+      const images = detail?.media?.images;
+      const thumbnailUrl = images
+        ? Object.values(images).map((image: any) => image?.url).find(Boolean) ?? null
+        : null;
+
+      return {
+        external_media_id: id,
+        media_type: "PIN",
+        title: detail?.title ?? detail?.description?.slice(0, 96) ?? null,
+        thumbnail_url: thumbnailUrl,
+        permalink: id ? `https://www.pinterest.com/pin/${encodeURIComponent(id)}/` : null,
+        posted_at: detail?.created_at ?? null,
+        views,
+        metadata: {
+          rank: index + 1,
+          metrics: item?.metrics ?? {},
+        },
+      };
+    }),
+  );
+}
+
 async function fetchInstagramAccountInsights(
   igUserId: string,
   accessToken: string,
-): Promise<InstagramAccountInsight> {
+): Promise<AccountInsightData> {
   const encodedToken = encodeURIComponent(accessToken);
   const metrics: Record<string, any> = {};
 
@@ -527,7 +733,7 @@ async function fetchInstagramAccountInsights(
 async function fetchInstagramTopContent(
   igUserId: string,
   accessToken: string,
-): Promise<InstagramTopContentItem[]> {
+): Promise<AccountTopContentItem[]> {
   const mediaUrl =
     `https://graph.facebook.com/v21.0/${igUserId}/media` +
     `?fields=id,caption,media_type,media_url,thumbnail_url,timestamp,permalink&limit=12&access_token=${encodeURIComponent(accessToken)}`;
@@ -541,7 +747,7 @@ async function fetchInstagramTopContent(
   const mediaJson = await mediaRes.json();
   const mediaList = Array.isArray(mediaJson?.data) ? mediaJson.data : [];
 
-  const rows: InstagramTopContentItem[] = [];
+  const rows: AccountTopContentItem[] = [];
 
   for (const media of mediaList) {
     const id = String(media?.id ?? "");

@@ -249,7 +249,7 @@ export default function DashboardScreen() {
             {workspace?.name ?? "SignalSprout"}
           </Text>
           <Text style={{ ...typography.body, color: colors.textSecondary }}>
-            Here's what's happening
+            Here&apos;s what&apos;s happening
           </Text>
         </View>
 

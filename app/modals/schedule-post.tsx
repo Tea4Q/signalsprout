@@ -173,7 +173,6 @@ export default function SchedulePostModal() {
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function styles(colors: any) {
   return StyleSheet.create({
     safeArea: {

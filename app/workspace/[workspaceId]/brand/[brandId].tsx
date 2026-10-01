@@ -1,4 +1,3 @@
-import { AppBadge } from "@/components/ui/AppBadge";
 import { AppButton } from "@/components/ui/AppButton";
 import { AppInput } from "@/components/ui/AppInput";
 import { AppTabs } from "@/components/ui/AppTabs";
@@ -138,7 +137,6 @@ function TagInput({
 // ─── Info Tab ─────────────────────────────────────────────────────────────────
 
 function InfoTab({ brand, onSaved }: { brand: BrandRow; onSaved: (updated: Partial<BrandRow>) => void }) {
-  const { colors } = useTheme();
   const [name, setName] = useState(brand.name);
   const [description, setDescription] = useState(brand.description ?? "");
   const [websiteUrl, setWebsiteUrl] = useState(brand.website_url ?? "");
@@ -223,7 +221,6 @@ function ProfileTab({
   brand: BrandRow;
   profile: BrandProfileRow | null;
 }) {
-  const { colors } = useTheme();
   const [primaryColor, setPrimaryColor] = useState(profile?.primary_color ?? "");
   const [secondaryColor, setSecondaryColor] = useState(profile?.secondary_color ?? "");
   const [postingNotes, setPostingNotes] = useState(profile?.posting_notes ?? "");
@@ -472,8 +469,6 @@ function AssetsTab({
 
         {Platform.OS === "web" ? (
           <View style={{ gap: spacing.sm }}>
-            {/* eslint-disable-next-line @typescript-eslint/ban-ts-comment */}
-            {/* @ts-expect-error web-only */}
             <input
               ref={fileInputRef}
               type="file"

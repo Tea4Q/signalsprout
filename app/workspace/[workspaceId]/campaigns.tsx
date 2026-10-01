@@ -17,7 +17,6 @@ import {
   Alert,
   FlatList,
   Modal,
-  Pressable,
   Text,
   TouchableWithoutFeedback,
   View,

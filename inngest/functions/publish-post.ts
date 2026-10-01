@@ -44,8 +44,7 @@ export const publishScheduledPost = inngest.createFunction(
             Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
             "Content-Type": "application/json",
           },
-          // Body is intentionally empty — the publisher processes all due queue jobs
-          body: JSON.stringify({}),
+          body: JSON.stringify({ post_id }),
         },
       );
 

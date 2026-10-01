@@ -239,7 +239,6 @@ export default function AddCreditModal() {
           label={saving ? "Saving…" : "Save Credit Purchase"}
           onPress={handleSave}
           disabled={saving}
-          style={{ marginTop: spacing.md }}
         />
       </ScrollView>
     </SafeAreaView>
@@ -277,7 +276,7 @@ function styles(colors: ReturnType<typeof import("@/hooks/use-theme").useTheme>[
     chip: {
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
-      borderRadius: radius.full ?? 999,
+      borderRadius: 999,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surface,

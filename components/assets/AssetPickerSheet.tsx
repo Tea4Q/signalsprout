@@ -146,7 +146,7 @@ export function AssetPickerSheet({
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 function makeStyles(colors: any) {
   return StyleSheet.create({
     overlay: {

@@ -52,7 +52,7 @@ export function AppModal({ visible, onClose, title, children }: AppModalProps) {
         }),
       ]).start();
     }
-  }, [visible]);
+  }, [visible, backdropAnim, slideAnim]);
 
   return (
     <Modal

@@ -39,7 +39,7 @@ const STEPS = [
   {
     icon: faShieldAlt,
     title: "Approve the requested permissions",
-    body: "SignalSprout needs pages_manage_posts and pages_read_engagement to publish and fetch basic metrics on your behalf.",
+    body: "SignalSprout needs pages_manage_posts, pages_read_engagement, and read_insights to publish and fetch Page analytics on your behalf.",
   },
   {
     icon: faCheckCircle,

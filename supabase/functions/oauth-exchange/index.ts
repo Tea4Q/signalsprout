@@ -60,7 +60,7 @@ async function exchangeInstagram(
   );
   if (!pagesRes.ok) throw new Error(`Failed to fetch Facebook Pages: ${await pagesRes.text()}`);
   const pagesData = await pagesRes.json();
-  const pages: Array<{ id: string; name: string; access_token: string }> =
+  const pages: { id: string; name: string; access_token: string }[] =
     pagesData.data ?? [];
 
   if (pages.length === 0) {
@@ -179,7 +179,7 @@ async function exchangeFacebook(params: {
     throw new Error(`Failed to fetch Facebook Pages: ${await pagesRes.text()}`);
   }
   const pagesData = await pagesRes.json();
-  const pages: Array<{ id: string; name: string; access_token: string }> =
+  const pages: { id: string; name: string; access_token: string }[] =
     pagesData.data ?? [];
 
   if (pages.length === 0) {
@@ -199,7 +199,7 @@ async function exchangeFacebook(params: {
     accountHandle: page.id,
     externalAccountId: page.id,
     avatarUrl: null,
-    scopes: "pages_manage_posts,pages_read_engagement,pages_show_list",
+    scopes: "pages_manage_posts,pages_read_engagement,pages_show_list,read_insights",
   }));
 }
 

@@ -9,7 +9,7 @@ import {
   View,
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
-import { radius, spacing, typography } from "@/constants/theme";
+import { spacing, typography } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { useWorkspace } from "@/context/workspace-context";
 import { CostEntryForm, CostEntryFormValues } from "@/components/costs/CostEntryForm";

@@ -113,7 +113,7 @@ export function ScreenshotPicker({ visible, workspaceId, onClose, onSelect }: Sc
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 function makeStyles(colors: any) {
   return StyleSheet.create({
     overlay: {

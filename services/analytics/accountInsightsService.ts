@@ -14,6 +14,10 @@ type SnapshotRow = {
   non_followers_views: number | null;
   posts_views: number | null;
   stories_views: number | null;
+  metadata?: {
+    reach_available?: boolean;
+    display_metrics?: Record<string, number>;
+  } | null;
   social_accounts?: { account_name?: string | null } | null;
 };
 
@@ -35,13 +39,14 @@ export interface AccountInsightCard {
   accountName: string;
   platform: Database["public"]["Enums"]["platform_type"];
   views: number;
-  accountsReached: number;
+  accountsReached: number | null;
   followersShare: number | null;
   nonFollowersShare: number | null;
   postsShare: number | null;
   storiesShare: number | null;
+  additionalMetrics: { label: string; value: number }[];
   capturedAt: string;
-  topContent: Array<{
+  topContent: {
     id: string;
     externalMediaId: string;
     mediaType: string | null;
@@ -51,7 +56,7 @@ export interface AccountInsightCard {
     postedAt: string | null;
     views: number;
     rank: number | null;
-  }>;
+  }[];
 }
 
 type UntypedSupabase = {
@@ -104,7 +109,7 @@ export async function getAccountInsights(
   let query = sb
     .from("account_insight_snapshots")
     .select(
-      "id, social_account_id, platform, captured_at, views, accounts_reached, followers_views, non_followers_views, posts_views, stories_views, social_accounts(account_name)",
+      "id, social_account_id, platform, captured_at, views, accounts_reached, followers_views, non_followers_views, posts_views, stories_views, metadata, social_accounts(account_name)",
     )
     .eq("workspace_id", workspaceId)
     .gte("captured_at", from)
@@ -124,7 +129,7 @@ export async function getAccountInsights(
     const fallback = await sb
       .from("account_insight_snapshots")
       .select(
-        "id, social_account_id, platform, captured_at, views, accounts_reached, followers_views, non_followers_views, posts_views, stories_views, social_accounts(account_name)",
+        "id, social_account_id, platform, captured_at, views, accounts_reached, followers_views, non_followers_views, posts_views, stories_views, metadata, social_accounts(account_name)",
       )
       .eq("workspace_id", workspaceId)
       .order("captured_at", { ascending: false })
@@ -178,11 +183,17 @@ export async function getAccountInsights(
       accountName: row.social_accounts?.account_name ?? "Connected account",
       platform: row.platform,
       views: row.views ?? 0,
-      accountsReached: row.accounts_reached ?? 0,
+      accountsReached:
+        row.metadata?.reach_available === false
+          ? null
+          : row.accounts_reached ?? 0,
       followersShare: safePercent(row.followers_views, row.views ?? 0),
       nonFollowersShare: safePercent(row.non_followers_views, row.views ?? 0),
       postsShare: safePercent(row.posts_views, row.views ?? 0),
       storiesShare: safePercent(row.stories_views, row.views ?? 0),
+      additionalMetrics: Object.entries(row.metadata?.display_metrics ?? {}).map(
+        ([label, value]) => ({ label, value }),
+      ),
       capturedAt: row.captured_at,
       topContent: top.map((item) => ({
         id: item.id,

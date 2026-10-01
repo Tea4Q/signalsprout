@@ -4,15 +4,15 @@ import { useTheme } from "@/hooks/use-theme";
 import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import * as SecureStore from "expo-secure-store";
-import { Platform } from "react-native";
-import { useCallback, useEffect, useRef, useState } from "react";
-import {
+import { Platform ,
   Animated,
   Pressable,
   ScrollView,
   Text,
   View,
 } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+
 import { SafeAreaView } from "react-native-safe-area-context";
 
 // ─── Onboarding state key ─────────────────────────────────────────────────────
@@ -88,7 +88,7 @@ export default function OnboardingScreen() {
       duration: 400,
       useNativeDriver: false,
     }).start();
-  }, [currentStep]);
+  }, [currentStep, progressAnim]);
 
   const handleCta = useCallback(
     async (stepIndex: number) => {
@@ -111,8 +111,6 @@ export default function OnboardingScreen() {
     },
     [],
   );
-
-  const step = STEPS[currentStep];
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>

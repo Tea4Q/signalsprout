@@ -122,7 +122,7 @@ export default function OAuthCallbackPage() {
     }
 
     exchange();
-  }, []);
+  }, [router]);
 
   return (
     <View

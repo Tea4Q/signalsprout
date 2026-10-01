@@ -142,7 +142,9 @@ export default function ContentScreen() {
           </View>
         </View>
         <Text style={{ ...typography.micro, color: colors.textMuted, marginTop: spacing.sm }}>
-          {new Date(item.created_at).toLocaleDateString()}
+          {item.scheduled_for
+            ? new Date(item.scheduled_for).toLocaleDateString()
+            : new Date(item.created_at).toLocaleDateString()}
         </Text>
       </Pressable>
     );
@@ -200,7 +202,7 @@ export default function ContentScreen() {
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 function styles(colors: any) {
   return StyleSheet.create({
     safeArea: {

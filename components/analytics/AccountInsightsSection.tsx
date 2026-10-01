@@ -55,7 +55,7 @@ export function AccountInsightsSection({ insights, loading = false }: AccountIns
           }}
         >
           <Text style={{ ...typography.caption, color: colors.textSecondary }}>
-            No account insights yet. Run Sync Metrics after connecting and publishing.
+            Account analytics will appear after the next scheduled sync.
           </Text>
         </View>
       ) : (
@@ -88,15 +88,39 @@ export function AccountInsightsSection({ insights, loading = false }: AccountIns
 
               <View style={{ flexDirection: "row", gap: spacing.md }}>
                 <View style={{ flex: 1, gap: spacing.xs }}>
-                  <Text style={{ ...typography.micro, color: colors.textSecondary }}>Views</Text>
+                  <Text style={{ ...typography.micro, color: colors.textSecondary }}>
+                    {insight.platform === "instagram"
+                      ? "Views"
+                      : insight.platform === "facebook"
+                        ? "Page impressions"
+                        : "Impressions"}
+                  </Text>
                   <Text style={{ ...typography.h2, color: colors.textPrimary }}>{insight.views.toLocaleString()}</Text>
                 </View>
                 <View style={{ flex: 1, gap: spacing.xs }}>
                   <Text style={{ ...typography.micro, color: colors.textSecondary }}>Accounts reached</Text>
-                  <Text style={{ ...typography.h2, color: colors.textPrimary }}>{insight.accountsReached.toLocaleString()}</Text>
+                  <Text style={{ ...typography.h2, color: colors.textPrimary }}>
+                    {insight.accountsReached?.toLocaleString() ?? "--"}
+                  </Text>
                 </View>
               </View>
 
+              {insight.additionalMetrics.length > 0 && (
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.md }}>
+                  {insight.additionalMetrics.map((metric) => (
+                    <View key={metric.label} style={{ minWidth: "30%", gap: spacing.xs }}>
+                      <Text style={{ ...typography.micro, color: colors.textSecondary }}>
+                        {metric.label}
+                      </Text>
+                      <Text style={{ ...typography.body, color: colors.textPrimary }}>
+                        {metric.value.toLocaleString()}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {(insight.followersShare != null || insight.nonFollowersShare != null) && (
               <View style={{ gap: spacing.xs }}>
                 <Text style={{ ...typography.caption, color: colors.textSecondary }}>
                   Follower split: {percentLabel(insight.followersShare)} followers · {percentLabel(insight.nonFollowersShare)} non-followers
@@ -116,7 +140,9 @@ export function AccountInsightsSection({ insights, loading = false }: AccountIns
                   />
                 </View>
               </View>
+              )}
 
+              {(insight.postsShare != null || insight.storiesShare != null) && (
               <View style={{ gap: spacing.xs }}>
                 <Text style={{ ...typography.caption, color: colors.textSecondary }}>
                   By content type: {percentLabel(insight.postsShare)} posts · {percentLabel(insight.storiesShare)} stories
@@ -136,16 +162,13 @@ export function AccountInsightsSection({ insights, loading = false }: AccountIns
                   />
                 </View>
               </View>
+              )}
 
-              <View style={{ gap: spacing.sm }}>
-                <Text style={{ ...typography.caption, color: colors.textSecondary }}>
-                  Top content by views
-                </Text>
-                {insight.topContent.length === 0 ? (
-                  <Text style={{ ...typography.micro, color: colors.textMuted }}>
-                    No content cards available from this snapshot.
+              {insight.topContent.length > 0 && (
+                <View style={{ gap: spacing.sm }}>
+                  <Text style={{ ...typography.caption, color: colors.textSecondary }}>
+                    Top content by {insight.platform === "instagram" ? "views" : "impressions"}
                   </Text>
-                ) : (
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>
                     {insight.topContent.map((item) => (
                       <Pressable
@@ -184,14 +207,14 @@ export function AccountInsightsSection({ insights, loading = false }: AccountIns
                             {item.title || item.mediaType || "Untitled"}
                           </Text>
                           <Text style={{ ...typography.micro, color: colors.textSecondary }}>
-                            {item.views.toLocaleString()} views
+                            {item.views.toLocaleString()} {insight.platform === "instagram" ? "views" : "impressions"}
                           </Text>
                         </View>
                       </Pressable>
                     ))}
                   </ScrollView>
-                )}
-              </View>
+                </View>
+              )}
             </View>
           ))}
         </View>

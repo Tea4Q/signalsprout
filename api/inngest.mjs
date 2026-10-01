@@ -35,7 +35,7 @@ const publishScheduledPost = inngest.createFunction(
           Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ post_id }),
       });
 
       if (!res.ok) {
@@ -62,7 +62,58 @@ const trackPublishedPost = inngest.createFunction(
   },
 );
 
+const syncPlatformAnalyticsNightly = inngest.createFunction(
+  {
+    id: "sync-platform-analytics-nightly",
+    name: "Sync Platform Analytics Nightly",
+    triggers: [{ cron: "TZ=UTC 0 0 * * *" }],
+  },
+  async ({ step }) => {
+    const result = await step.run("sync-platform-analytics", async () => {
+      if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
+        throw new Error("Supabase URL or service role key is not configured.");
+      }
+
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/sync-platform-analytics`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({}),
+        },
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `Analytics sync failed (${response.status}): ${errorText}`,
+        );
+      }
+
+      return await response.json();
+    });
+
+    const failedPosts = (result.results ?? []).filter((row) => !row.success).length;
+    const failedAccounts = (result.account_insights ?? []).filter(
+      (row) => !row.success,
+    ).length;
+
+    return {
+      checkedPosts: result.synced ?? 0,
+      failedPosts,
+      failedAccounts,
+    };
+  },
+);
+
 export default serve({
   client: inngest,
-  functions: [publishScheduledPost, trackPublishedPost],
+  functions: [
+    publishScheduledPost,
+    trackPublishedPost,
+    syncPlatformAnalyticsNightly,
+  ],
 });

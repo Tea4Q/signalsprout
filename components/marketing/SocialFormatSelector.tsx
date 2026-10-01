@@ -4,11 +4,11 @@ import { radius, spacing, typography } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import type { MarketingImageFormat } from "@/services/content/marketingImagePromptBuilder";
 
-const FORMATS: Array<{
+const FORMATS: {
   value: MarketingImageFormat;
   label: string;
   description: string;
-}> = [
+}[] = [
   { value: "instagram-square", label: "Instagram Square", description: "1080 x 1080" },
   { value: "instagram-story", label: "Instagram Story", description: "1080 x 1920" },
   { value: "pinterest-pin", label: "Pinterest Pin", description: "1000 x 1500" },

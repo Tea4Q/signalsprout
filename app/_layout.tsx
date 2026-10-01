@@ -174,7 +174,6 @@ function RootLayout() {
     if (loading) return;
 
     const inAuthGroup = segments[0] === "(auth)";
-    const inOnboarding = (segments[0] as string) === "onboarding";
     const inOAuthCallback = segments[0] === "oauth";
 
     if (!session && !inAuthGroup && !inOAuthCallback) {
@@ -189,7 +188,7 @@ function RootLayout() {
         }
       });
     }
-  }, [session, loading, segments]);
+  }, [session, loading, segments, router]);
 
   // Let the oauth callback render immediately — it handles its own loading state
   // and must not be blocked by the auth spinner or redirected to sign-in.

@@ -8,6 +8,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useTheme } from "../../hooks/use-theme";
+import { spacing } from "../../constants/theme";
 
 interface SkeletonBoxProps {
   width?: number | `${number}%`;
@@ -34,7 +35,7 @@ export function SkeletonBox({
       -1,
       true,
     );
-  }, []);
+  }, [opacity]);
 
   const animStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
@@ -57,7 +58,6 @@ export function SkeletonBox({
 }
 
 export function SkeletonCard({ lines = 3 }: { lines?: number }) {
-  const { spacing } = require("../../constants/theme");
   return (
     <Animated.View style={{ gap: spacing.sm }}>
       <SkeletonBox height={18} width="60%" />

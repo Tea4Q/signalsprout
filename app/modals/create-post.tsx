@@ -1076,17 +1076,6 @@ export default function CreatePostModal() {
   );
 }
 
-function SummaryRow({ label, value }: { label: string; value: string }) {
-  const { colors } = useTheme();
-  return (
-    <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: spacing.xs }}>
-      <Text style={{ ...typography.caption, color: colors.textSecondary }}>{label}</Text>
-      <Text style={{ ...typography.caption, color: colors.textPrimary, fontWeight: "600" }}>{value}</Text>
-    </View>
-  );
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function styles(colors: any) {
   return StyleSheet.create({
     safeArea: {

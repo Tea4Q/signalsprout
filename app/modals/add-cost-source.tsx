@@ -8,7 +8,7 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { radius, spacing, typography } from "@/constants/theme";
+import { spacing, typography } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { useWorkspace } from "@/context/workspace-context";
 import { AppButton } from "@/components/ui/AppButton";

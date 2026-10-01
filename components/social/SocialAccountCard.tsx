@@ -14,8 +14,8 @@ interface SocialAccountCardProps {
   connectedCount?: number;
   connecting: boolean;
   disconnecting: boolean;
-  onConnect: () => void;
-  onDisconnect: () => void;
+  onConnect?: () => void;
+  onDisconnect?: () => void;
   onManage?: () => void;
 }
 
@@ -155,7 +155,7 @@ export function SocialAccountCard({
       {/* Action button */}
       {isConnected ? (
         <View style={{ gap: spacing.xs }}>
-          <Pressable
+          {onConnect && <Pressable
             onPress={onConnect}
             disabled={connecting || disconnecting}
             accessibilityRole="button"
@@ -176,9 +176,9 @@ export function SocialAccountCard({
                 {expired ? "Reconnect" : "Sync Accounts"}
               </Text>
             )}
-          </Pressable>
+          </Pressable>}
 
-          <Pressable
+          {(onManage || onDisconnect) && <Pressable
             onPress={onManage ?? onDisconnect}
             disabled={connecting || disconnecting}
             accessibilityRole="button"
@@ -206,31 +206,33 @@ export function SocialAccountCard({
                 {onManage ? "Manage" : "Disconnect"}
               </Text>
             )}
-          </Pressable>
+          </Pressable>}
         </View>
       ) : (
-        <Pressable
-          onPress={onConnect}
-          disabled={connecting}
-          accessibilityRole="button"
-          accessibilityLabel={`Connect ${platform.label}`}
-          style={({ pressed }) => ({
-            paddingVertical: spacing.sm,
-            paddingHorizontal: spacing.md,
-            borderRadius: radius.sm,
-            backgroundColor: platform.color,
-            alignItems: "center",
-            opacity: pressed || connecting ? 0.7 : 1,
-          })}
-        >
-          {connecting ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={{ ...typography.micro, color: "#fff", fontWeight: "600" }}>
-              Connect
-            </Text>
-          )}
-        </Pressable>
+        <>
+          {onConnect && <Pressable
+            onPress={onConnect}
+            disabled={connecting}
+            accessibilityRole="button"
+            accessibilityLabel={`Connect ${platform.label}`}
+            style={({ pressed }) => ({
+              paddingVertical: spacing.sm,
+              paddingHorizontal: spacing.md,
+              borderRadius: radius.sm,
+              backgroundColor: platform.color,
+              alignItems: "center",
+              opacity: pressed || connecting ? 0.7 : 1,
+            })}
+          >
+            {connecting ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={{ ...typography.micro, color: "#fff", fontWeight: "600" }}>
+                Connect
+              </Text>
+            )}
+          </Pressable>}
+        </>
       )}
     </View>
   );

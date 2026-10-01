@@ -6,8 +6,11 @@ import {
 } from "@/components/analytics/PerformanceTable";
 import { RecommendationPanel } from "@/components/analytics/RecommendationPanel";
 import { AppTabs, type TabItem } from "@/components/ui/AppTabs";
+import { ErrorState } from "@/components/ui/ErrorState";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { radius, spacing, typography } from "@/constants/theme";
 import { useWorkspace } from "@/context/workspace-context";
+import { useToast } from "@/context/toast-context";
 import { useTheme } from "@/hooks/use-theme";
 import { formatUSD } from "@/lib/currency";
 import {
@@ -36,11 +39,14 @@ import {
   type CostPerAssetResult,
   type CostPerPostResult,
 } from "@/services/finance/roiService";
+import { syncMetrics } from "@/services/analytics/analyticsIngestService";
 import type { Database } from "@/types/database";
+import { router } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Pressable,
   ScrollView,
   Text,
   View,
@@ -58,6 +64,7 @@ const PERIOD_TABS: TabItem[] = [
 export default function AnalyticsScreen() {
   const { colors } = useTheme();
   const { workspaceId, loading: loadingWorkspace } = useWorkspace();
+  const { showToast } = useToast();
 
   const [period, setPeriod] = useState<MetricPeriod>("weekly");
   const [summary, setSummary] = useState<PerformanceSummary | null>(null);
@@ -71,11 +78,15 @@ export default function AnalyticsScreen() {
   const [generatingRecs, setGeneratingRecs] = useState(false);
   const [costPerPost, setCostPerPost] = useState<CostPerPostResult | null>(null);
   const [costPerAsset, setCostPerAsset] = useState<CostPerAssetResult | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
 
   const loadData = useCallback(
     async (p: MetricPeriod) => {
       if (!workspaceId) return;
       setLoading(true);
+      setLoadError(null);
       try {
         const [sum, posts, brands, platforms, recs, cpp, cpa, insightRows] = await Promise.all([
           getPerformanceSummary(workspaceId, p),
@@ -95,8 +106,8 @@ export default function AnalyticsScreen() {
         setRecommendations(recs);
         setCostPerPost(cpp);
         setCostPerAsset(cpa);
-      } catch {
-        // data unavailable — show empty state
+      } catch (error) {
+        setLoadError(error instanceof Error ? error.message : "Failed to load analytics data.");
       } finally {
         setLoading(false);
       }
@@ -115,11 +126,11 @@ export default function AnalyticsScreen() {
       try {
         const posts = await getTopPosts(workspaceId, period, key);
         setTopPosts(posts);
-      } catch {
-        // ignore
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : "Failed to sort posts.", "error");
       }
     },
-    [workspaceId, period],
+    [workspaceId, period, showToast],
   );
 
   const handleGenerate = useCallback(async () => {
@@ -136,19 +147,63 @@ export default function AnalyticsScreen() {
     }
   }, [workspaceId, period]);
 
+  const handleSync = useCallback(async () => {
+    if (!workspaceId || syncing) return;
+    setSyncing(true);
+    try {
+      const result = await syncMetrics(workspaceId);
+      setLastSyncAt(new Date().toISOString());
+      showToast(`Analytics sync complete: ${result.synced} post${result.synced === 1 ? "" : "s"} updated.`, "success");
+      await loadData(period);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Analytics sync failed.", "error");
+    } finally {
+      setSyncing(false);
+    }
+  }, [loadData, period, showToast, syncing, workspaceId]);
+
   const handleDismiss = useCallback(async (id: string) => {
     try {
       await dismissRecommendation(id);
       setRecommendations((prev) => prev.filter((r) => r.id !== id));
-    } catch {
-      // ignore
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Failed to dismiss recommendation.", "error");
     }
-  }, []);
+  }, [showToast]);
 
   if (loadingWorkspace) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
         <ActivityIndicator color={colors.primary} style={{ flex: 1 }} />
+      </SafeAreaView>
+    );
+  }
+
+  if (loadError && !loading) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+        <ErrorState message={loadError} onRetry={() => loadData(period)} />
+      </SafeAreaView>
+    );
+  }
+
+  const hasAnalyticsData =
+    summary !== null ||
+    topPosts.length > 0 ||
+    byBrand.length > 0 ||
+    byPlatform.length > 0 ||
+    accountInsights.length > 0;
+
+  if (!loading && !hasAnalyticsData) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+        <EmptyState
+          icon="insights"
+          title="No analytics yet"
+          subtitle="Connect a social account and publish a post to start collecting performance data."
+          ctaLabel="Connect an account"
+          onCta={() => router.push("/(tabs)/social-accounts" as never)}
+        />
       </SafeAreaView>
     );
   }
@@ -170,9 +225,24 @@ export default function AnalyticsScreen() {
           <Text style={{ ...typography.h2, color: colors.textPrimary }}>
             Analytics
           </Text>
-          <Text style={{ ...typography.caption, color: colors.textMuted }}>
-            Daily sync at 00:00 UTC
-          </Text>
+          <View style={{ alignItems: "flex-end", gap: spacing.xs }}>
+            <Text style={{ ...typography.caption, color: colors.textMuted }}>
+              {lastSyncAt
+                ? `Last synced ${new Date(lastSyncAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+                : "Daily sync at 00:00 UTC"}
+            </Text>
+            <Pressable
+              onPress={handleSync}
+              disabled={syncing}
+              accessibilityRole="button"
+              accessibilityLabel="Sync analytics now"
+              style={{ opacity: syncing ? 0.5 : 1 }}
+            >
+              <Text style={{ ...typography.caption, color: colors.primary, fontWeight: "700" }}>
+                {syncing ? "Syncing…" : "Sync now"}
+              </Text>
+            </Pressable>
+          </View>
         </View>
 
         {/* Period tabs */}

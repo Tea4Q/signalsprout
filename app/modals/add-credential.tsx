@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Pressable,
   SafeAreaView,
@@ -13,7 +13,7 @@ import { faInstagram, faOpenai, faPinterest } from "@fortawesome/free-brands-svg
 import { faKey } from "@fortawesome/free-solid-svg-icons";
 import { spacing, typography } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
-import { useWorkspace } from "@/context/workspace-context";
+import { canManageMembers, useWorkspace } from "@/context/workspace-context";
 import { AppButton } from "@/components/ui/AppButton";
 import { AppInput } from "@/components/ui/AppInput";
 import { AppSelect } from "@/components/ui/AppSelect";
@@ -68,8 +68,13 @@ function defaultValues(): FormValues {
 export default function AddCredentialModal() {
   const { colors } = useTheme();
   const router = useRouter();
-  const { workspaceId } = useWorkspace();
+  const { workspaceId, role } = useWorkspace();
+  const canManage = canManageMembers(role);
   const s = styles(colors);
+
+  useEffect(() => {
+    if (!canManage) router.back();
+  }, [canManage, router]);
 
   const [values, setValues] = useState<FormValues>(defaultValues());
   const [errors, setErrors] = useState<Partial<Record<keyof FormValues, string>>>({});

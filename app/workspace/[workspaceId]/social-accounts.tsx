@@ -3,6 +3,7 @@ import { FacebookSetupModal } from "@/components/social/FacebookSetupModal";
 import { InstagramSetupModal } from "@/components/social/InstagramSetupModal";
 import { spacing, typography } from "@/constants/theme";
 import { useToast } from "@/context/toast-context";
+import { canManageSocialAccounts, useWorkspace } from "@/context/workspace-context";
 import { useTheme } from "@/hooks/use-theme";
 import { PLATFORM_LIST, type PlatformId } from "@/lib/platforms/config";
 import { supabase } from "@/lib/supabase";
@@ -75,6 +76,8 @@ function formatAccountIdentifier(account: SocialAccount): string | null {
 export default function SocialAccountsScreen() {
   const { colors } = useTheme();
   const { workspaceId } = useLocalSearchParams<{ workspaceId: string }>();
+  const { role } = useWorkspace();
+  const canManage = canManageSocialAccounts(role);
   const { showToast } = useToast();
 
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
@@ -335,9 +338,9 @@ export default function SocialAccountsScreen() {
                     connectedCount={platformAccounts.length}
                     connecting={connecting === platform.id}
                     disconnecting={!!account && disconnecting === account.id}
-                    onConnect={() => handleConnect(platform.id)}
-                    onDisconnect={() => account && handleDisconnect(account)}
-                    onManage={account ? () => setManagePlatformId(platform.id) : undefined}
+                    onConnect={canManage ? () => handleConnect(platform.id) : undefined}
+                    onDisconnect={canManage ? () => account && handleDisconnect(account) : undefined}
+                    onManage={canManage && account ? () => setManagePlatformId(platform.id) : undefined}
                   />
                 </View>
               );

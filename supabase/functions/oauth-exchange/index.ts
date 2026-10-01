@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { AuthorizationError, requireWorkspaceRole } from "../_shared/authorization.ts";
 
 // ── Platform token exchange helpers ─────────────────────────────────────────
 
@@ -499,20 +500,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Verify the user is a member of the workspace
-    const { data: membership } = await serviceClient
-      .from("workspace_members")
-      .select("role")
-      .eq("workspace_id", workspaceId)
-      .eq("user_id", user.id)
-      .single();
-
-    if (!membership) {
-      return new Response(JSON.stringify({ error: "Workspace access denied" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    await requireWorkspaceRole(serviceClient, workspaceId, user.id, ["owner", "admin"]);
 
     // Exchange the authorization code (or direct token) for stored credentials
     let results: TokenResult[];
@@ -576,7 +564,7 @@ Deno.serve(async (req: Request) => {
         : (err as any)?.message ?? JSON.stringify(err) ?? "OAuth exchange failed";
     console.error("[oauth-exchange]", message);
     return new Response(JSON.stringify({ error: message }), {
-      status: 500,
+      status: err instanceof AuthorizationError ? 403 : 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

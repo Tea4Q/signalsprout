@@ -7,6 +7,7 @@ import { AppTextarea } from "@/components/ui/AppTextarea";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { radius, spacing, typography } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
+import { canManageWorkspaceContent, useWorkspace } from "@/context/workspace-context";
 import { getBrands } from "@/services/workspace/brandService";
 import { getCampaigns, createCampaign } from "@/services/workspace/campaignService";
 import type { Database } from "@/types/database";
@@ -43,6 +44,8 @@ function formatDate(dateStr: string | null): string {
 export default function CampaignsScreen() {
   const { colors } = useTheme();
   const { workspaceId } = useLocalSearchParams<{ workspaceId: string }>();
+  const { role } = useWorkspace();
+  const canWrite = canManageWorkspaceContent(role);
 
   const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
   const [brands, setBrands] = useState<BrandRow[]>([]);
@@ -138,8 +141,8 @@ export default function CampaignsScreen() {
             icon="campaign"
             title="No campaigns yet"
             subtitle="Create your first campaign to plan and track your marketing efforts."
-            ctaLabel="Create Campaign"
-            onCta={openModal}
+            ctaLabel={canWrite ? "Create Campaign" : undefined}
+            onCta={canWrite ? openModal : undefined}
           />
         ) : (
           <FlatList

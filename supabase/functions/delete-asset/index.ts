@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { AuthorizationError, requireWorkspaceRole } from "../_shared/authorization.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -48,7 +49,7 @@ Deno.serve(async (req: Request) => {
     // Fetch via user-scoped client so RLS enforces workspace membership
     const { data: asset, error: fetchError } = await userClient
       .from("assets")
-      .select("file_path")
+      .select("file_path, workspace_id")
       .eq("id", asset_id)
       .single();
 
@@ -68,6 +69,12 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+
+    await requireWorkspaceRole(serviceClient, asset.workspace_id, user.id, [
+      "owner",
+      "admin",
+      "editor",
+    ]);
 
     const { error: storageError } = await serviceClient.storage
       .from("assets")
@@ -99,7 +106,7 @@ Deno.serve(async (req: Request) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal server error";
     return new Response(JSON.stringify({ error: message }), {
-      status: 500,
+      status: err instanceof AuthorizationError ? 403 : 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

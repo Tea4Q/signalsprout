@@ -14,7 +14,7 @@ import {
 import { useRouter } from "expo-router";
 import { radius, spacing, typography } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
-import { useWorkspace } from "@/context/workspace-context";
+import { canEdit, useWorkspace } from "@/context/workspace-context";
 import { PromptBuilder, PromptBuilderValues } from "@/components/content/PromptBuilder";
 import { CaptionEditor } from "@/components/content/CaptionEditor";
 import { HashtagList } from "@/components/content/HashtagList";
@@ -42,6 +42,7 @@ const TOTAL_STEPS = 4;
 
 const DEFAULT_FORM: PromptBuilderValues = {
   brand_id: "",
+  campaign_id: "",
   platform: "instagram",
   content_type: "",
   tone: "",
@@ -59,7 +60,8 @@ function defaultScheduleDate(): Date {
 export default function CreatePostModal() {
   const { colors } = useTheme();
   const router = useRouter();
-  const { workspaceId } = useWorkspace();
+  const { workspaceId, role } = useWorkspace();
+  const canWrite = canEdit(role);
 
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<PromptBuilderValues>(DEFAULT_FORM);
@@ -97,6 +99,10 @@ export default function CreatePostModal() {
   const [newHashtag, setNewHashtag] = useState("");
 
   const s = styles(colors);
+
+  useEffect(() => {
+    if (!canWrite) router.back();
+  }, [canWrite, router]);
 
   // ── Fetch brand details (name, website, social avatar) for preview ────────
   useEffect(() => {
@@ -315,6 +321,7 @@ export default function CreatePostModal() {
     try {
       const post = await createPost({
         brand_id: form.brand_id,
+        campaign_id: form.campaign_id || null,
         workspace_id: workspaceId,
         platform: form.platform,
         hook: content?.hook ?? null,
@@ -364,6 +371,7 @@ export default function CreatePostModal() {
     try {
       const post = await createPost({
         brand_id: form.brand_id,
+        campaign_id: form.campaign_id || null,
         workspace_id: workspaceId,
         platform: form.platform,
         hook: content?.hook ?? null,

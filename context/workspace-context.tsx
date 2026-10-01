@@ -63,6 +63,21 @@ export function canEdit(role: WorkspaceRole | null): boolean {
   return role === "owner" || role === "admin" || role === "editor";
 }
 
+/** Returns true if the role can record or manage operational costs. */
+export function canManageCosts(role: WorkspaceRole | null): boolean {
+  return canEdit(role);
+}
+
+/** Returns true if the role can connect or disconnect social accounts. */
+export function canManageSocialAccounts(role: WorkspaceRole | null): boolean {
+  return role === "owner" || role === "admin";
+}
+
+/** Returns true if the role can manage workspace brands, campaigns, and assets. */
+export function canManageWorkspaceContent(role: WorkspaceRole | null): boolean {
+  return canEdit(role);
+}
+
 /** Returns true if the role can manage workspace members and billing. */
 export function canManageMembers(role: WorkspaceRole | null): boolean {
   return role === "owner" || role === "admin";

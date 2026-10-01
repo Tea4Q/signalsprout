@@ -4,6 +4,7 @@ import { InsightCard } from "@/components/dashboard/InsightCard";
 import { PlatformBreakdownCard } from "@/components/dashboard/PlatformBreakdownCard";
 import { UpcomingPostsCard } from "@/components/dashboard/UpcomingPostsCard";
 import { SkeletonBox } from "@/components/ui/SkeletonBox";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { radius, spacing, typography } from "@/constants/theme";
 import { useWorkspace } from "@/context/workspace-context";
 import { useTheme } from "@/hooks/use-theme";
@@ -136,11 +137,13 @@ export default function DashboardScreen() {
   const [scheduledCount, setScheduledCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadDashboard = useCallback(
     async (silent = false) => {
       if (!workspaceId) return;
       if (!silent) setLoading(true);
+      setLoadError(null);
 
       const now = new Date();
       const farFuture = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
@@ -209,8 +212,8 @@ export default function DashboardScreen() {
         setPublishedThisMonth(perfSummary.postCount);
         setTotalImpressions(perfSummary.impressions);
         setScheduledCount(scheduledResult.count ?? 0);
-      } catch {
-        // non-fatal – empty for new workspaces
+      } catch (error) {
+        setLoadError(error instanceof Error ? error.message : "Failed to load dashboard data.");
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -222,6 +225,14 @@ export default function DashboardScreen() {
   useEffect(() => {
     if (!wsLoading) loadDashboard();
   }, [wsLoading, loadDashboard]);
+
+  if (loadError && !loading) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+        <ErrorState message={loadError} onRetry={() => loadDashboard()} />
+      </SafeAreaView>
+    );
+  }
 
   function navigate(route: NavRoute) {
     if (!workspaceId) return;

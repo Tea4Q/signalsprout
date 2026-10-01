@@ -14,7 +14,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { radius, spacing, typography } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
-import { useWorkspace } from "@/context/workspace-context";
+import { canEdit, useWorkspace } from "@/context/workspace-context";
 import { getPosts, deletePost } from "@/services/scheduling/postService";
 import { AppBadge, BadgeVariant } from "@/components/ui/AppBadge";
 import type { Database } from "@/types/database";
@@ -36,7 +36,8 @@ const STATUS_BADGE: Record<PostStatus, { label: string; variant: BadgeVariant }>
 export default function ContentScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  const { workspaceId, loading: loadingWorkspace } = useWorkspace();
+  const { workspaceId, loading: loadingWorkspace, role } = useWorkspace();
+  const canWrite = canEdit(role);
   const [posts, setPosts] = useState<PostRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -131,14 +132,16 @@ export default function ContentScreen() {
           </View>
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
             <AppBadge label={badge.label} variant={badge.variant} />
-            <Pressable
-              onPress={() => handleDelete(item)}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Delete post"
-            >
-              <MaterialIcons name="delete-outline" size={20} color={colors.danger} />
-            </Pressable>
+            {canWrite && (
+              <Pressable
+                onPress={() => handleDelete(item)}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Delete post"
+              >
+                <MaterialIcons name="delete-outline" size={20} color={colors.danger} />
+              </Pressable>
+            )}
           </View>
         </View>
         <Text style={{ ...typography.micro, color: colors.textMuted, marginTop: spacing.sm }}>
@@ -162,14 +165,16 @@ export default function ContentScreen() {
     <SafeAreaView style={s.safeArea}>
       <View style={s.header}>
         <Text style={{ ...typography.h2, color: colors.textPrimary }}>Content Studio</Text>
-        <Pressable
-          onPress={openCreatePost}
-          style={s.fab}
-          accessibilityRole="button"
-          accessibilityLabel="Create new post"
-        >
-          <Text style={{ ...typography.body, color: colors.background, fontWeight: "700" }}>+ New</Text>
-        </Pressable>
+        {canWrite && (
+          <Pressable
+            onPress={openCreatePost}
+            style={s.fab}
+            accessibilityRole="button"
+            accessibilityLabel="Create new post"
+          >
+            <Text style={{ ...typography.body, color: colors.background, fontWeight: "700" }}>+ New</Text>
+          </Pressable>
+        )}
       </View>
 
       {loading && posts.length === 0 ? (

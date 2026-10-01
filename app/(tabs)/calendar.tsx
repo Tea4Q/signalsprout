@@ -12,12 +12,14 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { radius, spacing, typography } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
-import { useWorkspace } from "@/context/workspace-context";
+import { useToast } from "@/context/toast-context";
+import { canEdit, useWorkspace } from "@/context/workspace-context";
 import { AppTabs, TabItem } from "@/components/ui/AppTabs";
 import { CalendarGrid, DayDots } from "@/components/calendar/CalendarGrid";
 import { QueueList } from "@/components/calendar/QueueList";
 import { WeekView } from "@/components/calendar/WeekView";
 import { DayView } from "@/components/calendar/DayView";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { PostDetailSheet } from "@/components/calendar/PostDetailSheet";
 import { getPosts, deletePost, approvePost, rejectPost } from "@/services/scheduling/postService";
 import {
@@ -61,7 +63,9 @@ function postDateKey(post: PostRow): string | null {
 export default function CalendarScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  const { workspaceId, loading: loadingWorkspace } = useWorkspace();
+  const { workspaceId, loading: loadingWorkspace, role } = useWorkspace();
+  const { showToast } = useToast();
+  const canWrite = canEdit(role);
 
   const now = new Date();
   const [activeTab, setActiveTab] = useState("month");
@@ -78,6 +82,7 @@ export default function CalendarScreen() {
   // Post detail sheet
   const [activePost, setActivePost] = useState<PostRow | null>(null);
   const [postSheetVisible, setPostSheetVisible] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const s = styles(colors);
 
@@ -86,6 +91,7 @@ export default function CalendarScreen() {
   const loadAll = useCallback(async () => {
     if (!workspaceId) return;
     setLoading(true);
+    setLoadError(null);
     try {
       const [posts, queue] = await Promise.all([
         getPosts(workspaceId), // all posts with scheduled_for
@@ -93,8 +99,8 @@ export default function CalendarScreen() {
       ]);
       setAllPosts(posts);
       setQueueItems(queue);
-    } catch {
-      // silently fail
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "Failed to load calendar data.");
     } finally {
       setLoading(false);
     }
@@ -192,36 +198,44 @@ export default function CalendarScreen() {
 
   const handleEdit = useCallback(
     (postId: string) => {
+      if (!canWrite) return;
       closePostSheet();
       router.push({ pathname: "/modals/edit-post", params: { postId } });
     },
-    [closePostSheet, router],
+    [canWrite, closePostSheet, router],
   );
 
   const handlePublishNow = useCallback(
     async (postId: string) => {
+      if (!canWrite) return;
       try {
         await publishNow(postId);
         closePostSheet();
         await loadAll();
-      } catch { /* ignore */ }
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : "Failed to publish post.", "error");
+      }
     },
-    [closePostSheet, loadAll],
+    [canWrite, closePostSheet, loadAll, showToast],
   );
 
   const handleDelete = useCallback(
     async (postId: string) => {
+      if (!canWrite) return;
       try {
         await deletePost(postId);
         closePostSheet();
         await loadAll();
-      } catch { /* ignore */ }
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : "Failed to delete post.", "error");
+      }
     },
-    [closePostSheet, loadAll],
+    [canWrite, closePostSheet, loadAll, showToast],
   );
 
   const handleReschedule = useCallback(
     async (postId: string, newDateKey: string) => {
+      if (!canWrite) return;
       const post = allPosts.find((p) => p.id === postId);
       if (!post?.scheduled_for) return;
       const dt = new Date(post.scheduled_for);
@@ -230,51 +244,65 @@ export default function CalendarScreen() {
       try {
         await reschedulePost(postId, dt.toISOString());
         await loadAll();
-      } catch { /* ignore */ }
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : "Failed to reschedule post.", "error");
+      }
     },
-    [allPosts, loadAll],
+    [allPosts, canWrite, loadAll, showToast],
   );
 
   const handleRescheduleTime = useCallback(
     async (postId: string, newScheduledFor: string) => {
+      if (!canWrite) return;
       try {
         await reschedulePost(postId, newScheduledFor);
         await loadAll();
-      } catch { /* ignore */ }
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : "Failed to reschedule post.", "error");
+      }
     },
-    [loadAll],
+    [canWrite, loadAll, showToast],
   );
 
   const handleRetry = useCallback(
     async (postId: string) => {
+      if (!canWrite) return;
       try {
         await retryFailedPost(postId);
         await loadAll();
-      } catch { /* ignore */ }
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : "Failed to retry post.", "error");
+      }
     },
-    [loadAll],
+    [canWrite, loadAll, showToast],
   );
 
   const handleApprove = useCallback(
     async (postId: string) => {
+      if (!canWrite) return;
       try {
         await approvePost(postId);
         closePostSheet();
         await loadAll();
-      } catch { /* ignore */ }
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : "Failed to approve post.", "error");
+      }
     },
-    [closePostSheet, loadAll],
+    [canWrite, closePostSheet, loadAll, showToast],
   );
 
   const handleReject = useCallback(
     async (postId: string, feedback: string) => {
+      if (!canWrite) return;
       try {
         await rejectPost(postId, feedback);
         closePostSheet();
         await loadAll();
-      } catch { /* ignore */ }
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : "Failed to reject post.", "error");
+      }
     },
-    [closePostSheet, loadAll],
+    [canWrite, closePostSheet, loadAll, showToast],
   );
 
   // ── Loading guard ─────────────────────────────────────────────────────────────
@@ -283,6 +311,14 @@ export default function CalendarScreen() {
     return (
       <SafeAreaView style={s.safeArea}>
         <ActivityIndicator color={colors.primary} style={{ marginTop: spacing["3xl"] }} />
+      </SafeAreaView>
+    );
+  }
+
+  if (loadError && !loading) {
+    return (
+      <SafeAreaView style={s.safeArea}>
+        <ErrorState message={loadError} onRetry={loadAll} />
       </SafeAreaView>
     );
   }
@@ -521,6 +557,9 @@ export default function CalendarScreen() {
         onApprove={handleApprove}
         onReject={handleReject}
         onRetry={handleRetry}
+        canEdit={canWrite}
+        canPublish={canWrite}
+        canDelete={canWrite}
       />
     </SafeAreaView>
   );

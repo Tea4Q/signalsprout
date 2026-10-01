@@ -11,7 +11,7 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { radius, spacing, typography } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
-import { useWorkspace } from "@/context/workspace-context";
+import { canEdit, useWorkspace } from "@/context/workspace-context";
 import { ScheduleForm } from "@/components/calendar/ScheduleForm";
 import { schedulePost } from "@/services/scheduling/schedulerService";
 import { getPost } from "@/services/scheduling/postService";
@@ -32,7 +32,8 @@ function defaultScheduleDate(): Date {
 export default function SchedulePostModal() {
   const { colors } = useTheme();
   const router = useRouter();
-  const { workspaceId } = useWorkspace();
+  const { workspaceId, role } = useWorkspace();
+  const canWrite = canEdit(role);
   const params = useLocalSearchParams<{ postId?: string }>();
 
   const [post, setPost] = useState<PostRow | null>(null);
@@ -43,6 +44,10 @@ export default function SchedulePostModal() {
   const [error, setError] = useState<string | null>(null);
 
   const s = styles(colors);
+
+  useEffect(() => {
+    if (!canWrite) router.back();
+  }, [canWrite, router]);
   const postId = params.postId;
 
   useEffect(() => {

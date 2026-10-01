@@ -4,6 +4,7 @@ import { AppTabs } from "@/components/ui/AppTabs";
 import { AppTextarea } from "@/components/ui/AppTextarea";
 import { radius, spacing, typography } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
+import { canManageWorkspaceContent, useWorkspace } from "@/context/workspace-context";
 import {
   getBrandProfile,
   updateBrand,
@@ -136,7 +137,7 @@ function TagInput({
 
 // ─── Info Tab ─────────────────────────────────────────────────────────────────
 
-function InfoTab({ brand, onSaved }: { brand: BrandRow; onSaved: (updated: Partial<BrandRow>) => void }) {
+function InfoTab({ brand, onSaved, canEdit }: { brand: BrandRow; onSaved: (updated: Partial<BrandRow>) => void; canEdit: boolean }) {
   const [name, setName] = useState(brand.name);
   const [description, setDescription] = useState(brand.description ?? "");
   const [websiteUrl, setWebsiteUrl] = useState(brand.website_url ?? "");
@@ -207,7 +208,7 @@ function InfoTab({ brand, onSaved }: { brand: BrandRow; onSaved: (updated: Parti
         autoCapitalize="none"
         keyboardType="url"
       />
-      <AppButton label="Save" onPress={handleSave} loading={saving} />
+      <AppButton label="Save" onPress={handleSave} loading={saving} disabled={!canEdit} />
     </ScrollView>
   );
 }
@@ -217,9 +218,11 @@ function InfoTab({ brand, onSaved }: { brand: BrandRow; onSaved: (updated: Parti
 function ProfileTab({
   brand,
   profile,
+  canEdit,
 }: {
   brand: BrandRow;
   profile: BrandProfileRow | null;
+  canEdit: boolean;
 }) {
   const [primaryColor, setPrimaryColor] = useState(profile?.primary_color ?? "");
   const [secondaryColor, setSecondaryColor] = useState(profile?.secondary_color ?? "");
@@ -319,7 +322,7 @@ function ProfileTab({
         placeholder="e.g. Shop now"
       />
 
-      <AppButton label="Save Profile" onPress={handleSave} loading={saving} />
+      <AppButton label="Save Profile" onPress={handleSave} loading={saving} disabled={!canEdit} />
     </ScrollView>
   );
 }
@@ -333,9 +336,11 @@ type AssetRow = Database["public"]["Tables"]["assets"]["Row"];
 function AssetsTab({
   workspaceId,
   brandId,
+  canEdit,
 }: {
   workspaceId: string;
   brandId: string;
+  canEdit: boolean;
 }) {
   const { colors } = useTheme();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -376,6 +381,7 @@ function AssetsTab({
   }
 
   async function handleDelete(asset: AssetRow) {
+    if (!canEdit) return;
     const doDelete = async () => {
       try {
         await deleteBrandAsset(asset.id, asset.file_path);
@@ -418,7 +424,7 @@ function AssetsTab({
       )}
 
       {/* Upload section */}
-      <View
+      {canEdit && <View
         style={{
           backgroundColor: colors.surface,
           borderRadius: radius.lg,
@@ -503,7 +509,7 @@ function AssetsTab({
             </Text>
           </View>
         )}
-      </View>
+      </View>}
 
       {/* Asset gallery */}
       {loading ? (
@@ -553,7 +559,7 @@ function AssetsTab({
                     {new Date(asset.created_at).toLocaleDateString()}
                   </Text>
                 </View>
-                <Pressable
+                {canEdit && <Pressable
                   onPress={() => handleDelete(asset)}
                   style={({ pressed }) => ({
                     paddingHorizontal: spacing.md,
@@ -568,7 +574,7 @@ function AssetsTab({
                   accessibilityLabel="Delete asset"
                 >
                   <Text style={{ ...typography.caption, color: colors.danger }}>Delete</Text>
-                </Pressable>
+                </Pressable>}
               </View>
             </View>
           ))}
@@ -582,6 +588,8 @@ function AssetsTab({
 
 export default function BrandDetailScreen() {
   const { colors } = useTheme();
+  const { role } = useWorkspace();
+  const canWrite = canManageWorkspaceContent(role);
   const { workspaceId, brandId } = useLocalSearchParams<{ workspaceId: string; brandId: string }>();
 
   const [activeTab, setActiveTab] = useState("info");
@@ -632,12 +640,13 @@ export default function BrandDetailScreen() {
       {activeTab === "info" ? (
         <InfoTab
           brand={brand}
+          canEdit={canWrite}
           onSaved={(updated) => setBrand((prev) => prev ? { ...prev, ...updated } : prev)}
         />
       ) : activeTab === "profile" ? (
-        <ProfileTab brand={brand} profile={profile} />
+        <ProfileTab brand={brand} profile={profile} canEdit={canWrite} />
       ) : (
-        <AssetsTab workspaceId={workspaceId!} brandId={brand.id} />
+        <AssetsTab workspaceId={workspaceId!} brandId={brand.id} canEdit={canWrite} />
       )}
     </SafeAreaView>
   );

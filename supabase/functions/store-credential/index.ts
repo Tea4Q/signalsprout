@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { AuthorizationError, requireWorkspaceRole } from "../_shared/authorization.ts";
 
 const MASTER_KEY_ENV = "CREDENTIAL_MASTER_KEY";
 
@@ -74,19 +75,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Verify user is a workspace member before storing
-    const { data: member } = await serviceClient
-      .from("workspace_members")
-      .select("id")
-      .eq("workspace_id", workspace_id)
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (!member) {
-      return new Response(JSON.stringify({ error: "Forbidden" }), {
-        status: 403,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+    await requireWorkspaceRole(serviceClient, workspace_id, user.id, ["owner", "admin"]);
 
     // Encrypt the secret value with AES-256-GCM
     const masterKey = await getMasterKey();
@@ -140,7 +129,7 @@ Deno.serve(async (req: Request) => {
     console.error("store-credential error:", err);
     return new Response(
       JSON.stringify({ error: "Internal server error" }),
-      { status: 500, headers: { "Content-Type": "application/json" } },
+      { status: err instanceof AuthorizationError ? 403 : 500, headers: { "Content-Type": "application/json" } },
     );
   }
 });

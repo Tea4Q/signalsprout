@@ -11,7 +11,7 @@ import {
 import { useFocusEffect, useRouter } from "expo-router";
 import { spacing, typography } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
-import { useWorkspace } from "@/context/workspace-context";
+import { canManageCosts, useWorkspace } from "@/context/workspace-context";
 import { CostEntryForm, CostEntryFormValues } from "@/components/costs/CostEntryForm";
 import { AppButton } from "@/components/ui/AppButton";
 import { createCostEntry } from "@/services/finance/costService";
@@ -33,8 +33,13 @@ function defaultFormValues(): CostEntryFormValues {
 export default function AddCostModal() {
   const { colors } = useTheme();
   const router = useRouter();
-  const { workspaceId } = useWorkspace();
+  const { workspaceId, role } = useWorkspace();
+  const canWrite = canManageCosts(role);
   const s = styles(colors);
+
+  useEffect(() => {
+    if (!canWrite) router.back();
+  }, [canWrite, router]);
 
   const [values, setValues] = useState<CostEntryFormValues>(defaultFormValues());
   const [brandOptions, setBrandOptions] = useState<SelectOption[]>([]);

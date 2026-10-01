@@ -15,7 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { radius, spacing, typography } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
-import { useWorkspace } from "@/context/workspace-context";
+import { canEdit, useWorkspace } from "@/context/workspace-context";
 import { CaptionEditor } from "@/components/content/CaptionEditor";
 import { CreativePreview } from "@/components/content/CreativePreview";
 import { HashtagList } from "@/components/content/HashtagList";
@@ -68,7 +68,8 @@ const READ_ONLY_STATUSES: PostStatus[] = ["published", "publishing", "archived"]
 export default function EditPostModal() {
   const { colors } = useTheme();
   const router = useRouter();
-  const { workspaceId } = useWorkspace();
+  const { workspaceId, role } = useWorkspace();
+  const canWrite = canEdit(role);
   const params = useLocalSearchParams<{ postId?: string }>();
   const postId = params.postId;
 
@@ -100,6 +101,10 @@ export default function EditPostModal() {
   const [imagePrompt, setImagePrompt] = useState("");
 
   const s = styles(colors);
+
+  useEffect(() => {
+    if (!canWrite) router.back();
+  }, [canWrite, router]);
 
   useEffect(() => {
     if (!postId) {

@@ -14,9 +14,11 @@ import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { radius, spacing, typography } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
+import { canManageWorkspaceContent, useWorkspace } from "@/context/workspace-context";
 import { AppBadge, BadgeVariant } from "@/components/ui/AppBadge";
 import { AppButton } from "@/components/ui/AppButton";
 import { AppModal } from "@/components/ui/AppModal";
+import { ErrorState } from "@/components/ui/ErrorState";
 import {
   getAssetsWithUsage,
   deleteAsset,
@@ -45,9 +47,12 @@ const NUM_COLUMNS = 2;
 export default function AssetsScreen() {
   const { colors } = useTheme();
   const { workspaceId } = useLocalSearchParams<{ workspaceId: string }>();
+  const { role } = useWorkspace();
+  const canWrite = canManageWorkspaceContent(role);
 
   const [assets, setAssets] = useState<AssetWithUsage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<FilterKey>("all");
 
@@ -60,11 +65,12 @@ export default function AssetsScreen() {
     async (silent = false) => {
       if (!workspaceId) return;
       if (!silent) setLoading(true);
+      setLoadError(null);
       try {
         const data = await getAssetsWithUsage(workspaceId);
         setAssets(data);
-      } catch {
-        // silently fail
+      } catch (error) {
+        setLoadError(error instanceof Error ? error.message : "Failed to load assets.");
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -89,6 +95,7 @@ export default function AssetsScreen() {
 
   const handleDelete = useCallback(
     async () => {
+      if (!canWrite) return;
       if (!confirmAsset) return;
       const asset = confirmAsset;
       setConfirmAsset(null);
@@ -103,8 +110,16 @@ export default function AssetsScreen() {
         setDeleting(false);
       }
     },
-    [confirmAsset, load],
+    [canWrite, confirmAsset, load],
   );
+
+  if (loadError && !loading) {
+    return (
+      <SafeAreaView style={[s.safe, { backgroundColor: colors.background }]}>
+        <ErrorState message={loadError} onRetry={() => load()} />
+      </SafeAreaView>
+    );
+  }
 
   const renderItem = ({ item, index }: { item: AssetWithUsage; index: number }) => {
     const url = getAssetPublicUrl(item.file_path);
@@ -139,7 +154,7 @@ export default function AssetsScreen() {
           </View>
         )}
         {/* Trash button overlay */}
-        <Pressable
+        {canWrite && <Pressable
           onPress={() => setConfirmAsset(item)}
           style={({ pressed }) => [s.trashBtn, { opacity: pressed ? 0.7 : 1 }]}
           accessibilityRole="button"
@@ -147,7 +162,7 @@ export default function AssetsScreen() {
           hitSlop={8}
         >
           <MaterialIcons name="delete" size={16} color="#fff" />
-        </Pressable>
+        </Pressable>}
       </View>
     );
   };

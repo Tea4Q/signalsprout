@@ -114,14 +114,15 @@ function CredentialRow({
 }: {
   credential: CredentialMeta;
   colors: ReturnType<typeof useTheme>["colors"];
-  onAction: (credential: CredentialMeta) => void;
+  onAction?: (credential: CredentialMeta) => void;
 }) {
   const label = rotationLabel(credential);
   const variant = rotationBadgeVariant(credential);
 
   return (
     <Pressable
-      onPress={() => onAction(credential)}
+      onPress={() => onAction?.(credential)}
+      disabled={!onAction}
       style={({ pressed }) => [
         {
           backgroundColor: colors.surface,
@@ -727,7 +728,7 @@ export default function SettingsScreen() {
             }}
           >
             <SectionHeader title="Security Vault" colors={colors} />
-            <Pressable
+            {canManageMembers(role) && <Pressable
               onPress={handleAddCredential}
               hitSlop={8}
               accessibilityRole="button"
@@ -742,7 +743,7 @@ export default function SettingsScreen() {
               >
                 + Add
               </Text>
-            </Pressable>
+            </Pressable>}
           </View>
 
           {loading ? (
@@ -766,7 +767,7 @@ export default function SettingsScreen() {
                   key={c.id}
                   credential={c}
                   colors={colors}
-                  onAction={handleCredentialAction}
+                  onAction={canManageMembers(role) ? handleCredentialAction : undefined}
                 />
               ))}
             </View>

@@ -1,7 +1,7 @@
 import { SocialAccountCard } from "@/components/social/SocialAccountCard";
 import { spacing, typography } from "@/constants/theme";
 import { useToast } from "@/context/toast-context";
-import { useWorkspace } from "@/context/workspace-context";
+import { canManageSocialAccounts, useWorkspace } from "@/context/workspace-context";
 import { useTheme } from "@/hooks/use-theme";
 import { PLATFORM_LIST, type PlatformId } from "@/lib/platforms/config";
 import { supabase } from "@/lib/supabase";
@@ -11,6 +11,8 @@ import { AppButton } from "@/components/ui/AppButton";
 import { AppModal } from "@/components/ui/AppModal";
 import {
   disconnectSocialAccount,
+  isTokenExpired,
+  isTokenExpiringSoon,
   listSocialAccounts,
   type SocialAccount,
 } from "@/services/social/socialAccountService";
@@ -76,7 +78,8 @@ function formatAccountIdentifier(account: SocialAccount): string | null {
 
 export default function SocialAccountsScreen() {
   const { colors } = useTheme();
-  const { workspaceId } = useWorkspace();
+  const { workspaceId, role } = useWorkspace();
+  const canManage = canManageSocialAccounts(role);
   const { showToast } = useToast();
 
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
@@ -367,6 +370,27 @@ export default function SocialAccountsScreen() {
           )}
         </View>
 
+        {accounts.some(isTokenExpired) && (
+          <View style={{ padding: spacing.md, borderRadius: 12, backgroundColor: colors.accentSoft, borderWidth: 1, borderColor: colors.danger + "55" }}>
+            <Text style={{ ...typography.caption, color: colors.danger, fontWeight: "700" }}>
+              A connected account has expired credentials.
+            </Text>
+            <Text style={{ ...typography.micro, color: colors.danger, marginTop: 2 }}>
+              Reconnect it before scheduled posts can publish.
+            </Text>
+          </View>
+        )}
+        {!accounts.some(isTokenExpired) && accounts.some(isTokenExpiringSoon) && (
+          <View style={{ padding: spacing.md, borderRadius: 12, backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.warning + "66" }}>
+            <Text style={{ ...typography.caption, color: colors.warning, fontWeight: "700" }}>
+              A connected account expires soon.
+            </Text>
+            <Text style={{ ...typography.micro, color: colors.textSecondary, marginTop: 2 }}>
+              Reconnect it now to avoid interrupted publishing.
+            </Text>
+          </View>
+        )}
+
         {loading ? (
           <View
             style={{ alignItems: "center", paddingVertical: spacing["3xl"] }}
@@ -401,9 +425,9 @@ export default function SocialAccountsScreen() {
                     disconnecting={
                       !!account && disconnecting === account.id
                     }
-                    onConnect={() => handleConnect(platform.id)}
-                    onDisconnect={() => account && handleDisconnect(account)}
-                    onManage={account ? () => setManagePlatformId(platform.id) : undefined}
+                    onConnect={canManage ? () => handleConnect(platform.id) : undefined}
+                    onDisconnect={canManage ? () => account && handleDisconnect(account) : undefined}
+                    onManage={canManage && account ? () => setManagePlatformId(platform.id) : undefined}
                   />
                 </View>
               );
@@ -476,7 +500,7 @@ export default function SocialAccountsScreen() {
               );
             })
           )}
-          {!!managedPlatform && (
+          {!!managedPlatform && canManage && (
             <AppButton
               label={managedPlatform.id === "facebook" || managedPlatform.id === "instagram" ? "Sync accounts" : "Reconnect"}
               onPress={() => {

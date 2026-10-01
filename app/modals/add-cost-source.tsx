@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Pressable,
   SafeAreaView,
@@ -10,7 +10,7 @@ import {
 import { useRouter } from "expo-router";
 import { spacing, typography } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
-import { useWorkspace } from "@/context/workspace-context";
+import { canManageCosts, useWorkspace } from "@/context/workspace-context";
 import { AppButton } from "@/components/ui/AppButton";
 import { AppInput } from "@/components/ui/AppInput";
 import { AppSelect } from "@/components/ui/AppSelect";
@@ -59,8 +59,13 @@ function defaultValues(): FormValues {
 export default function AddCostSourceModal() {
   const { colors } = useTheme();
   const router = useRouter();
-  const { workspaceId } = useWorkspace();
+  const { workspaceId, role } = useWorkspace();
+  const canWrite = canManageCosts(role);
   const s = styles(colors);
+
+  useEffect(() => {
+    if (!canWrite) router.back();
+  }, [canWrite, router]);
 
   const [values, setValues] = useState<FormValues>(defaultValues());
   const [errors, setErrors] = useState<Partial<Record<keyof FormValues, string>>>({});

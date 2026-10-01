@@ -1,6 +1,7 @@
 import { AppButton } from "@/components/ui/AppButton";
 import { radius, spacing, typography } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
+import { useWorkspace } from "@/context/workspace-context";
 import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import * as SecureStore from "expo-secure-store";
@@ -79,7 +80,9 @@ const STEPS = [
 
 export default function OnboardingScreen() {
   const { colors } = useTheme();
+  const { workspaceId } = useWorkspace();
   const [currentStep, setCurrentStep] = useState(0);
+  const [costSetupStarted, setCostSetupStarted] = useState(false);
   const progressAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -98,18 +101,32 @@ export default function OnboardingScreen() {
         return;
       }
 
-      // Steps 1-3: navigate to the relevant screen
-      // After navigating, the user will be redirected back to tabs
+      if (stepIndex === 1) {
+        if (!workspaceId) return;
+        setCurrentStep(2);
+        router.push(`/workspace/${workspaceId}/brands` as never);
+        return;
+      }
+
+      if (stepIndex === 2) {
+        setCurrentStep(3);
+        router.push("/(tabs)/social-accounts" as never);
+        return;
+      }
+
+      if (!costSetupStarted) {
+        setCostSetupStarted(true);
+        router.push("/modals/add-cost-source" as never);
+        return;
+      }
+
       if (stepIndex === STEPS.length - 1) {
-        // Last step — complete onboarding and go to dashboard
         await markOnboardingComplete();
         router.replace("/(tabs)/dashboard" as never);
         return;
       }
-
-      setCurrentStep((s) => s + 1);
     },
-    [],
+    [costSetupStarted, workspaceId],
   );
 
   return (
@@ -246,7 +263,11 @@ export default function OnboardingScreen() {
 
                 {isActive && (
                   <AppButton
-                    label={s.cta}
+                    label={
+                      i === STEPS.length - 1 && costSetupStarted
+                        ? "Finish setup"
+                        : s.cta
+                    }
                     onPress={() => handleCta(i)}
                     variant="primary"
                   />

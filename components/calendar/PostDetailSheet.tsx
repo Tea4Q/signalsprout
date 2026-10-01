@@ -60,6 +60,9 @@ export interface PostDetailSheetProps {
   onApprove?: (postId: string) => void;
   onReject?: (postId: string, feedback: string) => void;
   onRetry?: (postId: string) => void;
+  canEdit?: boolean;
+  canPublish?: boolean;
+  canDelete?: boolean;
 }
 
 
@@ -75,6 +78,9 @@ export function PostDetailSheet({
   onApprove,
   onReject,
   onRetry,
+  canEdit = true,
+  canPublish = true,
+  canDelete = true,
 }: PostDetailSheetProps) {
   const { colors } = useTheme();
   const [assets, setAssets] = useState<PostAsset[]>([]);
@@ -83,6 +89,7 @@ export function PostDetailSheet({
   const [rejectNote, setRejectNote] = useState("");
   const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
   const [loadingAuditLog, setLoadingAuditLog] = useState(false);
+  const [campaignName, setCampaignName] = useState<string | null>(null);
 
   useEffect(() => {
     if (!post?.id || !visible) {
@@ -90,14 +97,23 @@ export function PostDetailSheet({
       setShowRejectInput(false);
       setRejectNote("");
       setAuditLog([]);
+      setCampaignName(null);
       return;
     }
-    if (post.status === "failed") {
+    if (post.status === "failed" || post.status === "published") {
       setLoadingAuditLog(true);
       getPostAuditLog(post.id)
         .then(setAuditLog)
         .catch(() => {})
         .finally(() => setLoadingAuditLog(false));
+    }
+    if (post.campaign_id) {
+      supabase
+        .from("campaigns")
+        .select("name")
+        .eq("id", post.campaign_id)
+        .maybeSingle()
+        .then(({ data }) => setCampaignName(data?.name ?? null));
     }
     setLoadingAssets(true);
     (async () => {
@@ -133,7 +149,7 @@ export function PostDetailSheet({
         setLoadingAssets(false);
       }
     })();
-  }, [post?.id, post?.status, visible]);
+  }, [post?.campaign_id, post?.id, post?.status, visible]);
 
   if (!post) return null;
 
@@ -286,10 +302,10 @@ export function PostDetailSheet({
             </View>
           )}
 
-          {/* ── Error log (failed posts) ──────────────────────────────── */}
-          {isFailed && (
+          {/* ── Publishing history ──────────────────────────────────── */}
+          {(isFailed || status === "published") && (
             <View style={s.section}>
-              <Text style={s.sectionLabel}>ERROR LOG</Text>
+              <Text style={s.sectionLabel}>PUBLISHING HISTORY</Text>
               {loadingAuditLog ? (
                 <ActivityIndicator color={colors.danger} style={{ marginVertical: spacing.md }} />
               ) : auditLog.length === 0 ? (
@@ -342,6 +358,13 @@ export function PostDetailSheet({
                 <Text style={s.detailLabel}>Created</Text>
                 <Text style={s.detailValue} numberOfLines={1}>{createdDate}</Text>
               </View>
+              {campaignName && (
+                <View style={[s.detailCard, { backgroundColor: colors.surfaceAlt, width: "100%" }]}> 
+                  <MaterialIcons name="campaign" size={14} color={colors.textMuted} />
+                  <Text style={s.detailLabel}>Campaign</Text>
+                  <Text style={s.detailValue} numberOfLines={1}>{campaignName}</Text>
+                </View>
+              )}
               <View style={[s.detailCard, { backgroundColor: colors.surfaceAlt }]}>
                 <MaterialIcons name="flag" size={14} color={colors.textMuted} />
                 <Text style={s.detailLabel}>Status</Text>
@@ -378,7 +401,7 @@ export function PostDetailSheet({
         </ScrollView>
 
         {/* ── Footer ───────────────────────────────────────────────── */}
-        {isReview && onApprove ? (
+        {isReview && onApprove && canEdit ? (
           showRejectInput ? (
             /* Rejection feedback input */
             <View style={[s.footer, { flexDirection: "column", gap: spacing.md }]}>
@@ -418,7 +441,7 @@ export function PostDetailSheet({
           ) : (
             /* Review footer: Request Changes + Approve + Delete */
             <View style={s.footer}>
-              <Pressable
+              {canDelete && <Pressable
                 style={({ pressed }) => [s.editBtn, pressed && { opacity: 0.75 }]}
                 onPress={() => setShowRejectInput(true)}
                 accessibilityRole="button"
@@ -426,7 +449,7 @@ export function PostDetailSheet({
               >
                 <MaterialIcons name="undo" size={16} color={colors.textPrimary} />
                 <Text style={s.editBtnLabel}>Changes</Text>
-              </Pressable>
+              </Pressable>}
               <Pressable
                 style={({ pressed }) => [s.approveBtn, pressed && { opacity: 0.85 }]}
                 onPress={() => onApprove(post.id)}
@@ -449,7 +472,7 @@ export function PostDetailSheet({
         ) : isFailed ? (
           /* Failed footer: Retry + Edit + Delete */
           <View style={s.footer}>
-            <Pressable
+            {canEdit && <Pressable
               style={({ pressed }) => [s.editBtn, pressed && { opacity: 0.75 }]}
               onPress={() => onEdit(post.id)}
               accessibilityRole="button"
@@ -457,8 +480,8 @@ export function PostDetailSheet({
             >
               <MaterialIcons name="edit" size={16} color={colors.textPrimary} />
               <Text style={s.editBtnLabel}>Edit</Text>
-            </Pressable>
-            {onRetry && (
+            </Pressable>}
+            {canPublish && onRetry && (
               <Pressable
                 style={({ pressed }) => [s.publishBtn, { backgroundColor: colors.danger }, pressed && { opacity: 0.85 }]}
                 onPress={() => onRetry(post.id)}
@@ -469,19 +492,19 @@ export function PostDetailSheet({
                 <Text style={s.publishBtnLabel}>Retry</Text>
               </Pressable>
             )}
-            <Pressable
+            {canDelete && <Pressable
               style={({ pressed }) => [s.deleteBtn, pressed && { opacity: 0.7 }]}
               onPress={handleDeletePress}
               accessibilityRole="button"
               accessibilityLabel="Delete post"
             >
               <MaterialIcons name="delete-outline" size={20} color={colors.danger} />
-            </Pressable>
+            </Pressable>}
           </View>
         ) : (
           /* Normal footer: Edit + Publish Now + Delete */
           <View style={s.footer}>
-            <Pressable
+            {canEdit && <Pressable
               style={({ pressed }) => [s.editBtn, pressed && { opacity: 0.75 }]}
               onPress={() => onEdit(post.id)}
               accessibilityRole="button"
@@ -489,8 +512,8 @@ export function PostDetailSheet({
             >
               <MaterialIcons name="edit" size={16} color={colors.textPrimary} />
               <Text style={s.editBtnLabel}>Edit</Text>
-            </Pressable>
-            <Pressable
+            </Pressable>}
+            {canPublish && <Pressable
               style={({ pressed }) => [s.publishBtn, pressed && { opacity: 0.85 }]}
               onPress={() => onPublishNow(post.id)}
               accessibilityRole="button"
@@ -498,15 +521,15 @@ export function PostDetailSheet({
             >
               <MaterialIcons name="send" size={15} color="#FFFFFF" />
               <Text style={s.publishBtnLabel}>Publish Now</Text>
-            </Pressable>
-            <Pressable
+            </Pressable>}
+            {canDelete && <Pressable
               style={({ pressed }) => [s.deleteBtn, pressed && { opacity: 0.7 }]}
               onPress={handleDeletePress}
               accessibilityRole="button"
               accessibilityLabel="Delete post"
             >
               <MaterialIcons name="delete-outline" size={20} color={colors.danger} />
-            </Pressable>
+            </Pressable>}
           </View>
         )}
       </View>

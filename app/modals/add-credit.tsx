@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -13,7 +13,7 @@ import {
 import { useRouter } from "expo-router";
 import { radius, spacing, typography } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
-import { useWorkspace } from "@/context/workspace-context";
+import { canManageCosts, useWorkspace } from "@/context/workspace-context";
 import { addCreditPurchase } from "@/services/finance/creditService";
 import { AppButton } from "@/components/ui/AppButton";
 
@@ -39,8 +39,13 @@ function toDateInputValue(d: Date): string {
 export default function AddCreditModal() {
   const { colors } = useTheme();
   const router = useRouter();
-  const { workspaceId } = useWorkspace();
+  const { workspaceId, role } = useWorkspace();
+  const canWrite = canManageCosts(role);
   const s = styles(colors);
+
+  useEffect(() => {
+    if (!canWrite) router.back();
+  }, [canWrite, router]);
 
   const [vendor, setVendor] = useState("");
   const [amountUSD, setAmountUSD] = useState("");

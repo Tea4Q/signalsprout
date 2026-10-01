@@ -8,7 +8,7 @@ import {
 } from "@/components/costs/ToolSpendTable";
 import { AppTabs, TabItem } from "@/components/ui/AppTabs";
 import { radius, spacing, typography } from "@/constants/theme";
-import { useWorkspace } from "@/context/workspace-context";
+import { canManageCosts, useWorkspace } from "@/context/workspace-context";
 import { useTheme } from "@/hooks/use-theme";
 import { formatUSD } from "@/lib/currency";
 import {
@@ -285,7 +285,8 @@ function BudgetBar({
 
 export default function CostsScreen() {
   const { colors } = useTheme();
-  const { workspaceId, loading: loadingWorkspace } = useWorkspace();
+  const { workspaceId, loading: loadingWorkspace, role } = useWorkspace();
+  const canWrite = canManageCosts(role);
   const s = styles(colors);
 
   const [activePeriod, setActivePeriod] = useState<MetricPeriod>("monthly");
@@ -612,7 +613,7 @@ export default function CostsScreen() {
       </ScrollView>
 
       {/* FABs */}
-      <View style={s.fabRow}>
+      {canWrite && <View style={s.fabRow}>
         <Pressable
           onPress={() => router.push("/modals/add-credit" as never)}
           style={({ pressed }) => [s.fabSecondary, pressed && { opacity: 0.85 }]}
@@ -629,7 +630,7 @@ export default function CostsScreen() {
         >
           <Text style={s.fabText}>+ Add Cost Entry</Text>
         </Pressable>
-      </View>
+      </View>}
     </SafeAreaView>
   );
 }

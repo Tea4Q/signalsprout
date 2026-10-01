@@ -5,6 +5,7 @@ import { spacing, typography } from "../../constants/theme";
 import { useTheme } from "../../hooks/use-theme";
 import { useWorkspace } from "../../context/workspace-context";
 import { getBrands } from "../../services/workspace/brandService";
+import { getCampaigns } from "../../services/workspace/campaignService";
 import { getContentTypes, getToneOptions } from "../../services/content/promptTemplateService";
 import { AppSelect, SelectOption } from "../ui/AppSelect";
 import { AppInput } from "../ui/AppInput";
@@ -19,6 +20,7 @@ const PLATFORM_OPTIONS: SelectOption[] = [
 
 export interface PromptBuilderValues {
   brand_id: string;
+  campaign_id: string;
   platform: "instagram" | "pinterest" | "facebook" | "tiktok";
   content_type: string;
   tone: string;
@@ -38,6 +40,7 @@ export function PromptBuilder({ values, onChange }: PromptBuilderProps) {
   const [brandOptions, setBrandOptions] = useState<SelectOption[]>([]);
   const [brandsLoading, setBrandsLoading] = useState(false);
   const [brandsError, setBrandsError] = useState<string | null>(null);
+  const [campaignOptions, setCampaignOptions] = useState<SelectOption[]>([]);
 
   useEffect(() => {
     if (!workspaceId) return;
@@ -52,6 +55,22 @@ export function PromptBuilder({ values, onChange }: PromptBuilderProps) {
       })
       .finally(() => setBrandsLoading(false));
   }, [workspaceId]);
+
+  useEffect(() => {
+    if (!workspaceId || !values.brand_id) {
+      setCampaignOptions([]);
+      return;
+    }
+    getCampaigns(workspaceId, values.brand_id)
+      .then((campaigns) =>
+        setCampaignOptions(
+          campaigns
+            .filter((campaign) => campaign.status !== "completed")
+            .map((campaign) => ({ label: campaign.name, value: campaign.id })),
+        ),
+      )
+      .catch(() => setCampaignOptions([]));
+  }, [workspaceId, values.brand_id]);
 
   const set = <K extends keyof PromptBuilderValues>(
     key: K,
@@ -100,6 +119,13 @@ export function PromptBuilder({ values, onChange }: PromptBuilderProps) {
         options={PLATFORM_OPTIONS}
         onChange={(v) => set("platform", v as PromptBuilderValues["platform"])}
 
+      />
+      <AppSelect
+        label="Campaign (optional)"
+        value={values.campaign_id}
+        options={campaignOptions}
+        onChange={(v) => set("campaign_id", v)}
+        placeholder={campaignOptions.length ? "Select a campaign" : "No active campaigns"}
       />
       <AppSelect
         label="Content Type"

@@ -3,8 +3,10 @@ import { AppButton } from "@/components/ui/AppButton";
 import { AppCard } from "@/components/ui/AppCard";
 import { AppInput } from "@/components/ui/AppInput";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { radius, spacing, typography } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
+import { canManageWorkspaceContent, useWorkspace } from "@/context/workspace-context";
 import { getBrands, createBrand } from "@/services/workspace/brandService";
 import type { Database } from "@/types/database";
 import { router, useLocalSearchParams } from "expo-router";
@@ -33,9 +35,12 @@ function toSlug(name: string): string {
 export default function BrandsScreen() {
   const { colors } = useTheme();
   const { workspaceId } = useLocalSearchParams<{ workspaceId: string }>();
+  const { role } = useWorkspace();
+  const canWrite = canManageWorkspaceContent(role);
 
   const [brands, setBrands] = useState<BrandRow[]>([]);
   const [loadingBrands, setLoadingBrands] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Create modal state
   const [modalVisible, setModalVisible] = useState(false);
@@ -48,11 +53,12 @@ export default function BrandsScreen() {
 
   const fetchBrands = useCallback(async () => {
     if (!workspaceId) return;
+    setLoadError(null);
     try {
       const data = await getBrands(workspaceId);
       setBrands(data);
-    } catch {
-      // silently fail on list fetch
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "Failed to load brands.");
     } finally {
       setLoadingBrands(false);
     }
@@ -108,6 +114,14 @@ export default function BrandsScreen() {
     );
   }
 
+  if (loadError) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+        <ErrorState message={loadError} onRetry={fetchBrands} />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       <View style={{ flex: 1 }}>
@@ -116,8 +130,8 @@ export default function BrandsScreen() {
             icon="storefront"
             title="No brands yet"
             subtitle="Create your first brand to get started."
-            ctaLabel="Create Brand"
-            onCta={openModal}
+            ctaLabel={canWrite ? "Create Brand" : undefined}
+            onCta={canWrite ? openModal : undefined}
           />
         ) : (
           <FlatList

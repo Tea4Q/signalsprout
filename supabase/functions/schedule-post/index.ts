@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { AuthorizationError, requireWorkspaceRole } from "../_shared/authorization.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -88,6 +89,13 @@ Deno.serve(async (req: Request) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    await requireWorkspaceRole(
+      serviceClient,
+      post.workspace_id,
+      user.id,
+      ["owner", "admin", "editor"],
+    );
 
     if (!post.social_account_id) {
       return new Response(
@@ -209,7 +217,7 @@ Deno.serve(async (req: Request) => {
     const message =
       err instanceof Error ? err.message : "Internal server error";
     return new Response(JSON.stringify({ error: message }), {
-      status: 500,
+      status: err instanceof AuthorizationError ? 403 : 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

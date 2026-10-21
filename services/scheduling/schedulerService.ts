@@ -1,5 +1,19 @@
 import { supabase } from "@/lib/supabase";
 
+async function getEdgeFunctionError(error: Error): Promise<Error> {
+  try {
+    const context = (error as Error & {
+      context?: { json?: () => Promise<{ error?: string; message?: string }> };
+    }).context;
+    const body = await context?.json?.();
+    const message = body?.error ?? body?.message;
+    if (message) return new Error(message);
+  } catch {
+    // Keep the original invoke error when the response has no readable body.
+  }
+  return error;
+}
+
 export async function schedulePost(
   postId: string,
   scheduledFor: string,
@@ -7,7 +21,7 @@ export async function schedulePost(
   const { data, error } = await supabase.functions.invoke("schedule-post", {
     body: { post_id: postId, scheduled_for: scheduledFor },
   });
-  if (error) throw error;
+  if (error) throw await getEdgeFunctionError(error);
   if (data?.error) throw new Error(data.error);
 }
 
@@ -45,15 +59,6 @@ export async function publishNow(postId: string): Promise<void> {
   const { data, error } = await supabase.functions.invoke("publish-now", {
     body: { post_id: postId },
   });
-  if (error) {
-    // Try to extract the real error message from the edge function response body
-    try {
-      const body = await (error as unknown as { context?: { json?: () => Promise<{ error?: string }> } }).context?.json?.();
-      if (body?.error) throw new Error(body.error);
-    } catch (inner) {
-      if (inner instanceof Error && inner !== error) throw inner;
-    }
-    throw error;
-  }
+  if (error) throw await getEdgeFunctionError(error);
   if (data?.error) throw new Error(data.error);
 }

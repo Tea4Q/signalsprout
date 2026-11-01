@@ -42,6 +42,20 @@ const TABS: TabItem[] = [
   { key: "failed", label: "Failed" },
 ];
 
+const STATUS_FILTERS: { key: string; label: string; statuses?: string[] }[] = [
+  { key: "all", label: "All" },
+  { key: "scheduled", label: "Scheduled", statuses: ["scheduled", "approved", "publishing"] },
+  { key: "published", label: "Published", statuses: ["published"] },
+  { key: "failed", label: "Failed", statuses: ["failed"] },
+];
+
+const RANGE_FILTERS: { key: string; label: string; days?: number }[] = [
+  { key: "all", label: "All dates" },
+  { key: "7d", label: "±7 days", days: 7 },
+  { key: "30d", label: "±30 days", days: 30 },
+  { key: "90d", label: "±90 days", days: 90 },
+];
+
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
@@ -73,6 +87,8 @@ export default function CalendarScreen() {
   const [month, setMonth] = useState(now.getMonth());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [rangeFilter, setRangeFilter] = useState("all");
   const [allPosts, setAllPosts] = useState<PostRow[]>([]);
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -118,16 +134,23 @@ export default function CalendarScreen() {
 
   const CALENDAR_STATUSES = ["scheduled", "published", "approved", "publishing", "failed"];
 
-  const scheduledPosts = useMemo(
-    () =>
-      allPosts.filter(
-        (p) =>
-          CALENDAR_STATUSES.includes(p.status) &&
-          (p.scheduled_for || p.published_at),
-      ),
+  const scheduledPosts = useMemo(() => {
+    const group = STATUS_FILTERS.find((f) => f.key === statusFilter)?.statuses;
+    const days = RANGE_FILTERS.find((f) => f.key === rangeFilter)?.days;
+    const nowMs = Date.now();
+    return allPosts.filter((p) => {
+      if (!CALENDAR_STATUSES.includes(p.status)) return false;
+      const iso = p.status === "published"
+        ? (p.published_at ?? p.scheduled_for)
+        : (p.scheduled_for ?? p.published_at);
+      if (!iso) return false;
+      if (group && !group.includes(p.status)) return false;
+      // Recent window: within N days before or after now
+      if (days && Math.abs(new Date(iso).getTime() - nowMs) > days * 86_400_000) return false;
+      return true;
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [allPosts],
-  );
+  }, [allPosts, statusFilter, rangeFilter]);
 
   const reviewPosts = useMemo(
     () => allPosts.filter((p) => p.status === "ready_for_review"),
@@ -333,6 +356,40 @@ export default function CalendarScreen() {
       </View>
 
       <AppTabs tabs={TABS} activeKey={activeTab} onChange={setActiveTab} />
+
+      {["day", "week", "month"].includes(activeTab) && (
+        <View style={s.filterBar}>
+          {[
+            { options: STATUS_FILTERS, value: statusFilter, set: setStatusFilter },
+            { options: RANGE_FILTERS, value: rangeFilter, set: setRangeFilter },
+          ].map((row, i) => (
+            <ScrollView key={i} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filterRow}>
+              {row.options.map((opt) => {
+                const active = row.value === opt.key;
+                return (
+                  <Pressable
+                    key={opt.key}
+                    onPress={() => row.set(opt.key)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    style={[
+                      s.chip,
+                      {
+                        backgroundColor: active ? colors.primary : colors.surface,
+                        borderColor: active ? colors.primary : colors.border,
+                      },
+                    ]}
+                  >
+                    <Text style={{ ...typography.caption, color: active ? "#fff" : colors.textPrimary }}>
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          ))}
+        </View>
+      )}
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={s.scrollContent}>
         {loading && (
@@ -574,6 +631,18 @@ function styles(colors: any) {
       paddingBottom: spacing.md,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
+    },
+    filterBar: {
+      paddingHorizontal: spacing.xl,
+      paddingTop: spacing.md,
+      gap: spacing.sm,
+    },
+    filterRow: { gap: spacing.sm },
+    chip: {
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.xs,
+      borderRadius: radius.xl,
+      borderWidth: 1,
     },
     scrollContent: { padding: spacing.xl, paddingBottom: spacing["3xl"] },
     monthNav: {

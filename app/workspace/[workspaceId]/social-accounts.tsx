@@ -147,7 +147,6 @@ export default function SocialAccountsScreen() {
       if (!workspaceId) return;
       // Prevent double-invocation (would open multiple browser popups on web)
       if (connectingRef.current) return;
-      connectingRef.current = true;
 
       const platform = PLATFORM_LIST.find((p) => p.id === platformId);
       if (!platform) return;
@@ -173,6 +172,7 @@ export default function SocialAccountsScreen() {
         return;
       }
 
+      connectingRef.current = true;
       setConnecting(platformId);
       try {
         const redirectUri = Linking.createURL("oauth/callback");

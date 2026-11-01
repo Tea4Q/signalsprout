@@ -205,3 +205,15 @@ All types are generated from the live Supabase schema. To regenerate:
 npx supabase gen types typescript --project-id <project-ref> > types/database.ts
 ```
 
+## Automated Tests
+
+Run the unit tests with:
+
+```bash
+npm test
+```
+
+The suite covers authentication service behavior, workspace role permissions,
+scheduling and failed-post retries, scheduled publisher routing/failure handling,
+and image/video upload validation. The scheduled-publishing smoke test above
+remains an opt-in integration test because it publishes a real post.
